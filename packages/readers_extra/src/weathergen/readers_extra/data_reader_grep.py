@@ -157,7 +157,10 @@ class DataReaderGREP(DataReaderTimestep):
         if use_dask:
             ds = ds.chunk({self._time_coord_name: 1})
 
-        ds = ds.where(ds != 0)
+        # Zeros are treated as missing (land mask for ocean fields). Must be disabled for
+        # fields where 0 is a physical value (e.g. sea-ice concentration/thickness).
+        if self._stream_info.get("zero_as_nan", True):
+            ds = ds.where(ds != 0)
 
         data_start_time = np.datetime64(time_coord[0])
         data_end_time = np.datetime64(time_coord[-1])
