@@ -1,0 +1,31 @@
+evaluation:
+  metrics:
+  - rmse
+  score_plots: [lead_time]
+  summary_dir: "/e/scratch/weatherai/shared_work/results/m1j5o7bp/plots"
+  print_summary: false
+  log_scale: false
+  add_grid: false
+
+run_ids:
+    m1j5o7bp:
+        label: "d5xirkmf baseline"
+        results_base_dir: "/e/scratch/weatherai/shared_work/results/m1j5o7bp/"
+        rank: "all"
+        streams:
+            CGLORS-OCEAN:
+              persistence: true
+              regions: ["global"]
+              channels: ["thetao_0.5", "so_0.5", "uo_0.5", "vo_0.5", "zos"]
+              evaluation:
+                forecast_step: "all"
+                sample: "all"
+                ensemble: "all"
+              plotting:
+                sample: [0]
+                forecast_step: [1, 5, 10]
+                data_plots:
+                  - maps:
+                      predictions: [image]
+                      target: [image]
+                      bias: [image]
