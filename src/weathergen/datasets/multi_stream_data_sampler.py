@@ -674,7 +674,10 @@ Set repeat_data_in_mini_epoch to True if this is undesired."
                 "consecutive steps; x_(k-1) cannot be aligned with x_k"
             )
         aligned = copy.copy(rdata)
-        aligned.data = rdata_prev.data
+        # rdata was converted to torch in place by get_tokens_windows; rdata_prev may not be
+        # (window before the first step, never tokenized): same type as rdata.data
+        dtype = torch.as_tensor(rdata.data).dtype
+        aligned.data = torch.as_tensor(np.asarray(rdata_prev.data), dtype=dtype)
         x_prev = self.tokenizer.get_target_values(stream_info, aligned, token_data, tw, target_mask)
         x_prev = torch.as_tensor(np.asarray(x_prev[0]), dtype=torch.float32)
         return x_k, x_prev

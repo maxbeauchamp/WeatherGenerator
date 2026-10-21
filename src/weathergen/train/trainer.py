@@ -10,6 +10,7 @@
 # nor does it submit to any jurisdiction.
 import contextlib
 import copy
+import gc
 import logging
 import time
 from math import sqrt
@@ -593,6 +594,9 @@ class Trainer(TrainerBase):
         cf = self.cf
         self.model.eval()
 
+        # free cyclic garbage holding CUDA tensors in THIS process: otherwise the forked loader
+        # workers may collect it and crash with 'CUDA error: initialization error'
+        gc.collect()  # forked loader workers
         dataset_val_iter = iter(self.data_loader_validation)
 
         num_samples_write = mode_cfg.get("output", {}).get("num_samples", 0) * batch_size

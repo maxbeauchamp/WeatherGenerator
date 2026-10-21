@@ -107,6 +107,7 @@ case "${1:-}" in
     echo ">> figures in $WD/results/$INF_ID/figs_seaice/"
     ;;
   reinj-check)
+    for r in inf_reinj_off inf_reinj_zero; do rm -rf "$WD/results/$r"; done   # test runs: start clean
     # same model, same dates, without and with the (zero-initialised) re-injection
     common=(test_config.start_date=2023-01-01T00:00 test_config.end_date=2023-03-31T00:00
             test_config.shuffle=False test_config.samples_per_mini_epoch=2
@@ -140,6 +141,7 @@ case "${1:-}" in
     done
     ;;
   fm-check)
+    for r in inf_fm_off inf_fm_zero; do rm -rf "$WD/results/$r"; done   # test runs: start clean
     # same model, same dates: deterministic vs zero-initialised FM decoder on the ocean stream.
     # Every FM member must equal the deterministic prediction (IDENTICAL).
     common=(test_config.start_date=2023-01-01T00:00 test_config.end_date=2023-03-31T00:00
@@ -152,7 +154,7 @@ case "${1:-}" in
       flow_matching.inference.num_members=2 flow_matching.inference.num_steps=4 \
       2>&1 | tee log_inf_fm_zero.txt
     grep -E "Flow matching|Flow-matching|Initializing new module" log_inf_fm_zero.txt || true
-    uv run --offline python scripts/compare_inference_zips.py --streams CGLORS-OCEAN \
+    uv run --offline python scripts/compare_inference_zips.py \
       "$WD"/results/inf_fm_off/validation_chkpt*_rank0000.zip \
       "$WD"/results/inf_fm_zero/validation_chkpt*_rank0000.zip
     ;;
