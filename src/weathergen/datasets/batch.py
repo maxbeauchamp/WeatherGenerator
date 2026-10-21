@@ -167,6 +167,9 @@ class BatchSamples:
     output_steps: int
     output_idxs: list[int]
     device: str | None
+    # optional, forcing re-injection: keys = forecast step, values = BatchSamples holding only the
+    # forcing streams at the valid time of that step (see weathergen.model.forcing_injection)
+    forcing_samples: dict | None
 
     def __init__(
         self, stream_names: list[str], num_samples: int, output_steps, output_idxs
@@ -176,6 +179,7 @@ class BatchSamples:
         self.output_steps = output_steps
         self.output_idxs = output_idxs
         self.device = None
+        self.forcing_samples = None
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -187,6 +191,10 @@ class BatchSamples:
         self.tokens_lens = (
             self.tokens_lens.to(device, non_blocking=True) if self.tokens_lens is not None else None
         )
+
+        if self.get_forcing_samples():
+            for fs in self.forcing_samples.values():
+                fs.to_device(device)
 
         self.device = device
 
@@ -205,7 +213,16 @@ class BatchSamples:
             bs.samples = [bs.samples[i] for i in subset]
             torch_idxs = torch.tensor(subset, dtype=torch.long, device=bs.tokens_lens.device)
             bs.tokens_lens = torch.index_select(bs.tokens_lens, 1, torch_idxs)
+            if bs.get_forcing_samples():
+                fs = bs.forcing_samples
+                bs.forcing_samples = {k: v.get_subset(subset) for k, v in fs.items()}
             return bs
+
+    def get_forcing_samples(self) -> dict | None:
+        """
+        Forcing samples per forecast step (forcing re-injection), or None
+        """
+        return getattr(self, "forcing_samples", None)
 
     def get_num_source_steps(self) -> int:
         """
@@ -271,6 +288,10 @@ class BatchSamples:
         # pin source_tokens_lens
         if isinstance(self.tokens_lens, torch.Tensor):
             self.tokens_lens = self.tokens_lens.pin_memory()
+
+        if self.get_forcing_samples():
+            for fs in self.forcing_samples.values():
+                fs.pin_memory()
 
         return self
 

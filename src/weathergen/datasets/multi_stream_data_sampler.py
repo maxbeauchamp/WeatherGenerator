@@ -18,7 +18,7 @@ from omegaconf import OmegaConf
 
 from weathergen.common.config import Config
 from weathergen.common.io import IOReaderData
-from weathergen.datasets.batch import ModelBatch
+from weathergen.datasets.batch import BatchSamples, ModelBatch
 from weathergen.datasets.data_reader_anemoi import DataReaderAnemoi
 from weathergen.datasets.data_reader_base import (
     DataReaderBase,
@@ -32,8 +32,9 @@ from weathergen.datasets.tokenizer_masking import TokenizerMasking
 from weathergen.datasets.utils import (
     get_tokens_lens,
 )
+from weathergen.model.forcing_injection import get_forcing_reinjection_config
 from weathergen.readers_extra.registry import get_extra_reader
-from weathergen.train.utils import Stage, get_batch_size_from_config
+from weathergen.train.utils import TRAIN, Stage, get_batch_size_from_config
 from weathergen.utils.distributed import is_root
 
 type AnyDataReader = DataReaderBase | DataReaderAnemoi | DataReaderObs
@@ -145,6 +146,14 @@ class MultiStreamDataSampler(torch.utils.data.IterableDataset):
         self.samples_per_mini_epoch = mode_cfg.samples_per_mini_epoch
         self.check_samples(self._get_fsm())
         self.streams_datasets = self._init_stream_datasets(cf)
+
+        # forcing re-injection: forcing streams are also loaded at every forecast step
+        self.forcing_reinjection = get_forcing_reinjection_config(cf)
+        self.reinject_streams = self.forcing_reinjection["streams"]
+        unknown = [s for s in self.reinject_streams if s not in self.streams_datasets]
+        assert not unknown, f"forcing_reinjection.streams not in the streams config: {unknown}"
+        if self.reinject_streams and is_root():
+            logger.info(f"Forcing re-injection at every forecast step for: {self.reinject_streams}")
 
         # RNG seed setup
         rs = cf.data_loading.rng_seed
@@ -610,6 +619,60 @@ Set repeat_data_in_mini_epoch to True if this is undesired."
 
         return (input_data, output_data)
 
+    def _build_forcing_samples(
+        self, base_idx: int, num_forecast_steps: int, num_source_samples: int
+    ) -> dict[int, BatchSamples]:
+        """
+        Forcing re-injection: for every forecast step, a BatchSamples with only the forcing streams
+        (source channels, no masking) at the valid time of that step. All other streams are empty.
+        Keys are the forecast step indices used in Model.forward (ModelBatch.output_idxs).
+        """
+        stream_names = list(self.streams_datasets.keys())
+        num_output_steps = self._get_output_length(num_forecast_steps)
+        full_mask = torch.ones(self.num_healpix_cells, dtype=torch.bool)
+
+        forcing = {}
+        for step in range(self.output_offset, num_output_steps):
+            # same time index as the targets of this step (see _get_data_windows)
+            widx = base_idx + (self.time_step * step) // self.step_timedelta
+            time_win = self.time_window_handler.window(widx)
+
+            # load and tokenize each forcing stream once, shared by all source samples
+            tokenized = {}
+            for name in self.reinject_streams:
+                stream_info = self.streams_datasets[name].info
+                stream_ds = self.streams_datasets[name].readers
+                rdata = collect_datasources(stream_ds, widx, "source", self.rng)
+                if rdata.is_empty():
+                    rdata = spoof(
+                        self.healpix_level,
+                        time_win.start,
+                        stream_ds[0].get_geoinfo_size(),
+                        len(stream_ds[0].mean[stream_ds[0].source_idx]),
+                    )
+                    rdata.is_spoof = True
+                tokens = self.tokenizer.get_tokens_windows(stream_info, [rdata], True)[0]
+                if tokens[0] is None and tokens[1] is None:
+                    continue
+                cells, lens = self.tokenizer.get_source(
+                    stream_info, rdata, tokens, (time_win.start, time_win.end), full_mask
+                )
+                tokenized[name] = (cells, lens, rdata.is_spoof)
+
+            bs = BatchSamples(stream_names, num_source_samples, 1, [0])
+            for sample in bs.samples:
+                for name in stream_names:
+                    sdata = StreamData(widx, 1, 1, self.num_healpix_cells)
+                    if name in tokenized:
+                        cells, lens, is_spoof = tokenized[name]
+                        # TRAIN: do not keep the raw forcing data (not written to the outputs)
+                        sdata.add_source(TRAIN, 0, None, lens, cells, is_spoof)
+                    sample.add_stream_data(name, sdata)
+            bs.tokens_lens = get_tokens_lens(stream_names, bs, 1)
+            forcing[step] = bs
+
+        return forcing
+
     def _get_source_target_masks(self, training_mode):
         """
         Generate source and target masks for all streams.
@@ -755,6 +818,12 @@ Set repeat_data_in_mini_epoch to True if this is undesired."
         target_in_steps = np.array([tc.get("num_steps_input", 1) for _, tc in target_cfgs.items()])
         target_in_steps = 1 if len(target_in_steps) == 0 else target_in_steps.max().item()
         batch = self._preprocess_model_batch(batch, source_in_steps, target_in_steps)
+
+        # forcing re-injection (only for the network input, i.e. the source samples)
+        if self.reinject_streams and num_forecast_steps > 0:
+            batch.source_samples.forcing_samples = self._build_forcing_samples(
+                idx, num_forecast_steps, len(batch.source_samples)
+            )
 
         return batch
 

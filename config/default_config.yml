@@ -58,6 +58,13 @@ fe_dropout_rate: 0.1
 fe_with_qk_lnorm: True
 fe_layer_norm_after_blocks: []  # Index starts at 0. Thus, [3] adds a LayerNorm after the fourth layer
 fe_impute_latent_noise_std: 0.0  # 1e-4
+# Forcing re-injection: re-encode forcing streams (e.g. ERA5) at the valid time of every forecast
+# step and add them to the latent state through a zero-initialised projection (see
+# src/weathergen/model/forcing_injection.py). Disabled by default (original behaviour).
+forcing_reinjection:
+  enabled: False
+  streams: []            # e.g. [ERA5]; source channels of these streams are used
+  train_encoder: False   # False: forcing encoded without gradient (cheaper)
 # currently fixed to 1.0 (due to limitations with flex_attention and triton)
 forecast_att_dense_rate: 1.0
 

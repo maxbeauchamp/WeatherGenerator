@@ -37,6 +37,7 @@ from weathergen.model.engines import (
     TargetPredictionEngine,
     TargetPredictionEngineClassic,
 )
+from weathergen.model.forcing_injection import ForcingInjection, get_forcing_reinjection_config
 from weathergen.model.layers import MLP, NamedLinear
 from weathergen.model.norms import AdaLayerNorm
 from weathergen.model.utils import get_num_parameters
@@ -326,6 +327,9 @@ class Model(torch.nn.Module):
         self.embed_target_coords = None
         self.encoder: EncoderModule | None = None
         self.forecast_engine: ForecastingEngine | IdentityEngine | None = None
+        # forcing re-injection at every forecast step (None = disabled, default behaviour)
+        self.forcing_injection: ForcingInjection | None = None
+        self.forcing_reinjection = get_forcing_reinjection_config(cf)
         self.pred_heads = None
         self.q_cells: torch.Tensor | None = None
         self.streams: dict[str, typing.Any] = cf.streams
@@ -383,6 +387,15 @@ class Model(torch.nn.Module):
             self.forecast_engine = ForecastingEngine(cf, mode_cfg, self.num_healpix_cells)
         else:
             self.forecast_engine = IdentityEngine()
+
+        if self.forcing_reinjection["enabled"]:
+            self.forcing_injection = ForcingInjection(cf.ae_global_dim_embed)
+            if is_root():
+                logger.info(
+                    "Forcing re-injection enabled for streams "
+                    f"{self.forcing_reinjection['streams']} (zero-initialised projection, "
+                    f"train_encoder={self.forcing_reinjection['train_encoder']})"
+                )
 
         # embed coordinates yielding one query token for each target token
         dropout_rate = cf.embed_dropout_rate
@@ -583,7 +596,7 @@ class Model(torch.nn.Module):
 
     def reset_parameters(self):
         def _reset_params(module):
-            if isinstance(module, AdaLayerNorm | nn.Linear | nn.LayerNorm):
+            if isinstance(module, AdaLayerNorm | nn.Linear | nn.LayerNorm | ForcingInjection):
                 module.reset_parameters()
             else:
                 pass
@@ -614,6 +627,9 @@ class Model(torch.nn.Module):
         num_params_latent_heads += get_num_parameters(self.latent_pre_norm)
 
         num_params_fe = get_num_parameters(self.forecast_engine.fe_blocks)
+        num_params_fi = (
+            get_num_parameters(self.forcing_injection) if self.forcing_injection is not None else 0
+        )
 
         mdict = self.embed_target_coords
         num_params_embed_tcs = [
@@ -646,6 +662,8 @@ class Model(torch.nn.Module):
         print(f" Global assimilation engine: {num_params_ae_global:,}")
         print(f" Latent prediction heads and pre-norm: {num_params_latent_heads:,}")
         print(f" Forecast engine: {num_params_fe:,}")
+        if self.forcing_injection is not None:
+            print(f" Forcing re-injection: {num_params_fi:,}")
         print(" coordinate embedding, prediction networks and prediction heads:")
         zps = zip(
             self.streams.keys(),
@@ -693,8 +711,14 @@ class Model(torch.nn.Module):
 
         # Allow for pushforward trick
         p_fwd = self.cf.training_config.get("forecast", {}).get("pushforward", False)
+        get_forcing = getattr(batch, "get_forcing_samples", None)
+        forcing = get_forcing() if (self.forcing_injection is not None and get_forcing) else None
         # roll-out in latent space, iterate and generate output over requested output steps
         for step in batch.get_output_idxs():
+            # forcing re-injection: add the encoded forcing valid at this step
+            if forcing is not None and step in forcing:
+                tokens = self.inject_forcing(model_params, tokens, forcing[step], len(batch))
+
             without_grad = p_fwd and self.training and step != max(batch.get_output_idxs())
             if without_grad:
                 # Pushforward mode: advance tokens without grad; no decoding with torch.no_grad():
@@ -708,6 +732,20 @@ class Model(torch.nn.Module):
             output = self.predict_latent(model_params, step, tokens, batch, output)
 
         return output
+
+    def inject_forcing(self, model_params, tokens, forcing_batch, batch_size: int) -> torch.Tensor:
+        """
+        Encode the forcing streams valid at the current forecast step with the regular encoder
+        and add them to the latent tokens through the (zero-initialised) ForcingInjection.
+        """
+        if self.forcing_reinjection["train_encoder"]:
+            f_tokens, _ = self.encoder(model_params, forcing_batch)
+        else:
+            with torch.no_grad():
+                f_tokens, _ = self.encoder(model_params, forcing_batch)
+        shape = (batch_size, forcing_batch.get_num_source_steps(), *f_tokens.shape[1:])
+        f_tokens = f_tokens.reshape(shape).sum(axis=1)
+        return self.forcing_injection(tokens, f_tokens)
 
     def predict_latent(
         self,
