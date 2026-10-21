@@ -14,7 +14,7 @@
 #   ./run_cice_pipeline.sh reinj-check  # non-regression: zero-init injection == no injection
 #   ./run_cice_pipeline.sh r1           # learn the injection only (from P2_ID)
 #   ./run_cice_pipeline.sh r2           # everything trainable, low LR
-#   ./run_cice_pipeline.sh longroll     # 60-day rollouts without / with re-injection
+#   ./run_cice_pipeline.sh longroll     # 7-day rollouts without / with re-injection
 #
 # Training steps are long: with SLURM=1 they are submitted with launch-slurm.py. The slurm
 # launcher generates its own run id: then set P1_ID / P2_ID to the printed ids for the next steps.
@@ -126,7 +126,7 @@ case "${1:-}" in
     done
     for r in inf_long_noreinj inf_long_reinj; do
       uv run --offline python scripts/plot_seaice.py "$WD/results/$r/"validation_chkpt*_rank*.zip \
-        --samples 0 --vars aice hi --days 10 30 60 --animate --timeseries --label "$r" \
+        --samples 0 --vars aice hi --days 1 4 7 --animate --timeseries --label "$r" \
         --out-dir "$WD/results/$r/figs_seaice"
     done
     ;;
