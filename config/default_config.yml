@@ -65,6 +65,23 @@ forcing_reinjection:
   enabled: False
   streams: []            # e.g. [ERA5]; source channels of these streams are used
   train_encoder: False   # False: forcing encoded without gradient (cheaper)
+# Flow-matching decoders: the decoder of the listed streams becomes a conditional denoiser in
+# physical space (rectified flow, x-prediction, conditioned on the latent and on the previous
+# state), see src/weathergen/model/flow_matching.py. Disabled by default (deterministic decoders).
+flow_matching:
+  enabled: False
+  streams: []                  # e.g. [CICE]; their pred_head.ens_size must be 1
+  target: increment            # increment (y = x_k - x_k-1) | state (y = x_k)
+  time_sampling: logit_normal  # logit_normal | uniform
+  logit_normal: {mean: 0.0, std: 1.0}
+  prev_noise_std: 0.0          # noise on x_k-1 during training (exposure bias)
+  loss_weighting: x            # x: plain MSE (x-prediction) | v: velocity loss, 1/(1-t)^2
+  max_loss_weight: 100.0       # clip of the v weighting
+  inference:
+    num_members: 8
+    num_steps: 16
+    solver: heun               # heun | euler
+    noise_correlation: 0.0     # AR(1) correlation of the noise across lead times
 # currently fixed to 1.0 (due to limitations with flex_attention and triton)
 forecast_att_dense_rate: 1.0
 

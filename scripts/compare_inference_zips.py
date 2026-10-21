@@ -3,10 +3,13 @@
 Compare the predictions of two WeatherGenerator inference runs (zip outputs), sample by sample,
 stream by stream, forecast step by forecast step. Points are matched by coordinates.
 
-Main use: non-regression of forcing re-injection. Run the SAME model on the SAME dates
-(test_config.shuffle=False) without and with `forcing_reinjection.enabled=True`: with the
-zero-initialised injection the predictions must be identical (max |diff| = 0, or ~1e-6 with
-non-deterministic GPU kernels).
+Ensembles: if one run has 1 member and the other M members (flow matching), every member is
+compared to the single prediction (zero-initialised flow matching must reproduce it exactly).
+
+Main use: non-regression of forcing re-injection / flow matching. Run the SAME model on the
+SAME dates (test_config.shuffle=False) without and with the new feature enabled: with the
+zero-initialised injection / conditioning the predictions must be identical (max |diff| = 0, or
+~1e-6 with non-deterministic GPU kernels).
 
   uv run --offline python scripts/compare_inference_zips.py \
       /e/scratch/weatherai/shared_work/results/inf_noreinj/validation_chkpt00000_rank0000.zip \
@@ -51,15 +54,18 @@ def main():
                              f"{pb['ref_time']}): rerun both with test_config.shuffle=False")
                 j = W.match_points(pa["coords"][:, 0], pa["coords"][:, 1], pb["coords"])
                 ok = j >= 0
-                db = np.full_like(pa["data"], np.nan)
+                db = np.full((pa["data"].shape[0], *pb["data"].shape[1:]), np.nan, np.float64)
                 db[j[ok]] = pb["data"][ok]
-                d = np.abs(pa["data"] - db)
+                ea, eb = pa["data"].shape[-1], db.shape[-1]
+                if ea != eb and 1 not in (ea, eb):
+                    sys.exit(f"{stream}: ensemble sizes {ea} and {eb} cannot be compared")
+                d = np.abs(pa["data"] - db)  # broadcasts a single member against M members
                 m = float(np.nanmax(d)) if np.isfinite(d).any() else np.nan
                 worst = max(worst, m if np.isfinite(m) else 0.0)
                 rel = m / (float(np.nanstd(pa["data"])) + 1e-12)
                 flag = "OK " if m <= a.tol else "DIFF"
                 print(f"{flag} {stream:24s} s{int(sample):04d} f{f:02d}  max|diff| {m:.3e}  "
-                      f"(rel {rel:.1e})  unmatched {np.count_nonzero(~ok)}")
+                      f"(rel {rel:.1e})  members {ea}/{eb}  unmatched {np.count_nonzero(~ok)}")
     print(f"\n=> worst max|diff| = {worst:.3e}: "
           + ("IDENTICAL" if worst <= a.tol else "DIFFERENT (check the run options)"))
     sys.exit(0 if worst <= a.tol else 1)

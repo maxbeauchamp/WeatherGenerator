@@ -113,6 +113,11 @@ class StreamData:
         self.source_idxs_embed = [torch.tensor([]) for _ in range(self.input_steps)]
         self.source_idxs_embed_pe = [torch.tensor([]) for _ in range(self.input_steps)]
 
+        # flow matching (optional): normalised target values x_k and previous state x_{k-1} at the
+        # target points of each output step, in the order of target_coords (source samples only)
+        self.fm_target = [None for _ in range(output_steps)]
+        self.fm_prev = [None for _ in range(output_steps)]
+
     def pin_memory(self):
         """Pin all tensors in this StreamData object to CPU pinned memory"""
 
@@ -127,6 +132,10 @@ class StreamData:
         self.source_tokens_cells = _pin_tensor_list(self.source_tokens_cells)
         self.source_tokens_lens = _pin_tensor_list(self.source_tokens_lens)
         self.source_idxs_embed = _pin_tensor_list(self.source_idxs_embed)
+
+        # flow matching tensors (None entries are kept as is)
+        self.fm_target = _pin_tensor_list(getattr(self, "fm_target", []))
+        self.fm_prev = _pin_tensor_list(getattr(self, "fm_prev", []))
 
         return self
 
@@ -158,7 +167,22 @@ class StreamData:
 
             self.source_idxs_embed = [s.to(dv, non_blocking=True) for s in self.source_idxs_embed]
 
+        # flow matching tensors (None entries are kept as is)
+        def _mv(lst):
+            return [t.to(dv, non_blocking=True) if isinstance(t, torch.Tensor) else t for t in lst]
+
+        self.fm_target = _mv(getattr(self, "fm_target", []))
+        self.fm_prev = _mv(getattr(self, "fm_prev", []))
+
         return self
+
+    def add_fm_values(self, fstep: int, x_target: torch.Tensor, x_prev: torch.Tensor) -> None:
+        """
+        Flow matching: normalised target values x_k and previous state x_{k-1} at the target
+        points of output step fstep (same order as target_coords[fstep]).
+        """
+        self.fm_target[fstep] = x_target
+        self.fm_prev[fstep] = x_prev
 
     def add_source(
         self,

@@ -37,6 +37,8 @@ from weathergen.model.engines import (
     TargetPredictionEngine,
     TargetPredictionEngineClassic,
 )
+from weathergen.model import flow_matching as fmatch
+from weathergen.model.flow_matching import FlowMatchingConditioner, get_flow_matching_config
 from weathergen.model.forcing_injection import ForcingInjection, get_forcing_reinjection_config
 from weathergen.model.layers import MLP, NamedLinear
 from weathergen.model.norms import AdaLayerNorm
@@ -330,6 +332,10 @@ class Model(torch.nn.Module):
         # forcing re-injection at every forecast step (None = disabled, default behaviour)
         self.forcing_injection: ForcingInjection | None = None
         self.forcing_reinjection = get_forcing_reinjection_config(cf)
+        # flow-matching decoders (None = disabled, default behaviour); sampling only at inference
+        self.fm_cfg = get_flow_matching_config(cf)
+        self.fm_conditioners: nn.ModuleDict | None = None
+        self.fm_sampling = False
         self.pred_heads = None
         self.q_cells: torch.Tensor | None = None
         self.streams: dict[str, typing.Any] = cf.streams
@@ -552,6 +558,31 @@ class Model(torch.nn.Module):
                         stream_name=stream_name,
                     )
 
+        # flow-matching conditioning of the decoders of the selected streams
+        if self.fm_cfg["enabled"]:
+            assert cf.decoder_type != "Linear", "flow matching needs a target prediction engine"
+            self.fm_conditioners = nn.ModuleDict()
+            for i_stream, (stream_name, si) in enumerate(self.streams.items()):
+                if stream_name not in self.fm_cfg["streams"]:
+                    continue
+                assert stream_name in self.pred_heads, f"no decoder for FM stream {stream_name}"
+                assert si["pred_head"]["ens_size"] == 1, (
+                    f"flow matching stream {stream_name}: use pred_head.ens_size 1 (members come "
+                    "from flow_matching.inference.num_members)"
+                )
+                self.fm_conditioners[stream_name] = FlowMatchingConditioner(
+                    self.targets_num_channels[i_stream],
+                    si["embed_target_coords"]["dim_embed"],
+                    stream_name,
+                )
+            if is_root():
+                logger.info(
+                    f"Flow matching decoders for {list(self.fm_conditioners.keys())}: "
+                    f"target={self.fm_cfg['target']}, "
+                    f"loss_weighting={self.fm_cfg['loss_weighting']}, "
+                    f"inference={self.fm_cfg['inference']}"
+                )
+
         # Latent heads for losses
         self.latent_heads = nn.ModuleDict()
         self.latent_pre_norm = nn.LayerNorm(cf.ae_global_dim_embed)
@@ -596,7 +627,8 @@ class Model(torch.nn.Module):
 
     def reset_parameters(self):
         def _reset_params(module):
-            if isinstance(module, AdaLayerNorm | nn.Linear | nn.LayerNorm | ForcingInjection):
+            reset_types = AdaLayerNorm | nn.Linear | nn.LayerNorm
+            if isinstance(module, reset_types | ForcingInjection | FlowMatchingConditioner):
                 module.reset_parameters()
             else:
                 pass
@@ -629,6 +661,9 @@ class Model(torch.nn.Module):
         num_params_fe = get_num_parameters(self.forecast_engine.fe_blocks)
         num_params_fi = (
             get_num_parameters(self.forcing_injection) if self.forcing_injection is not None else 0
+        )
+        num_params_fm = (
+            get_num_parameters(self.fm_conditioners) if self.fm_conditioners is not None else 0
         )
 
         mdict = self.embed_target_coords
@@ -664,6 +699,8 @@ class Model(torch.nn.Module):
         print(f" Forecast engine: {num_params_fe:,}")
         if self.forcing_injection is not None:
             print(f" Forcing re-injection: {num_params_fi:,}")
+        if self.fm_conditioners is not None:
+            print(f" Flow-matching conditioning: {num_params_fm:,}")
         print(" coordinate embedding, prediction networks and prediction heads:")
         zps = zip(
             self.streams.keys(),
@@ -713,6 +750,8 @@ class Model(torch.nn.Module):
         p_fwd = self.cf.training_config.get("forecast", {}).get("pushforward", False)
         get_forcing = getattr(batch, "get_forcing_samples", None)
         forcing = get_forcing() if (self.forcing_injection is not None and get_forcing) else None
+        # flow matching: per-stream sampling state (previous member states, noise) across steps
+        fm_state = {}
         # roll-out in latent space, iterate and generate output over requested output steps
         for step in batch.get_output_idxs():
             # forcing re-injection: add the encoded forcing valid at this step
@@ -727,7 +766,7 @@ class Model(torch.nn.Module):
 
             tokens = self.forecast_engine(tokens, step, model_params.rope_coords)
             # decoder predictions
-            output = self.predict_decoders(model_params, step, tokens, batch, output)
+            output = self.predict_decoders(model_params, step, tokens, batch, output, fm_state)
             # latent predictions (raw and with SSL heads)
             output = self.predict_latent(model_params, step, tokens, batch, output)
 
@@ -746,6 +785,80 @@ class Model(torch.nn.Module):
         shape = (batch_size, forcing_batch.get_num_source_steps(), *f_tokens.shape[1:])
         f_tokens = f_tokens.reshape(shape).sum(axis=1)
         return self.forcing_injection(tokens, f_tokens)
+
+    def set_flow_matching_sampling(self, enabled: bool) -> None:
+        """Generate members by ODE sampling (inference) instead of the one-pass training loss."""
+        self.fm_sampling = bool(enabled) and self.fm_conditioners is not None
+        if self.fm_sampling and is_root():
+            logger.info(f"Flow matching: sampling enabled ({self.fm_cfg['inference']})")
+
+    def _fm_gather(self, batch, stream_name, step, attr, lens, num_channels, device):
+        """Concatenate fm_target / fm_prev of all samples (NaN where missing): (N, C)."""
+        parts = []
+        for sample, n in zip(batch.samples, lens, strict=True):
+            values = getattr(sample.streams_data[stream_name], attr, None)
+            v = values[step] if values is not None and step < len(values) else None
+            if v is None or v.shape[0] != n:
+                v = torch.full((n, num_channels), float("nan"), device=device)
+            parts.append(v.to(device=device, dtype=torch.float32))
+        return torch.cat(parts) if parts else torch.zeros((0, num_channels), device=device)
+
+    def predict_flow_matching(
+        self, stream_name, step, batch, tc_tokens, decode, t_coords_lens, fm_state
+    ) -> torch.Tensor:
+        """
+        Flow-matching decoder of one stream at one forecast step (see model/flow_matching.py).
+        Returns the state prediction(s), shape (members, N, C): 1 member in the training /
+        validation pass, num_members when sampling.
+        """
+        fm = self.fm_cfg
+        cond = self.fm_conditioners[stream_name]
+        dev, num_ch, n_pts = tc_tokens.device, cond.num_channels, tc_tokens.shape[0]
+        x_prev = self._fm_gather(batch, stream_name, step, "fm_prev", t_coords_lens, num_ch, dev)
+
+        out_dtype = {}
+
+        def denoise(x_t, x_prev_c, t_pts):
+            queries = tc_tokens + cond(x_t, x_prev_c, t_pts).to(tc_tokens.dtype)
+            out = decode(queries)  # (1, N, C) state prediction
+            out_dtype.setdefault("dtype", out.dtype)
+            return out
+
+        if not self.fm_sampling:
+            # training / validation: one noisy pass, LossPhysical MSE vs x_k is the FM loss
+            x_tgt = self._fm_gather(
+                batch, stream_name, step, "fm_target", t_coords_lens, num_ch, dev
+            )
+            t_s = fmatch.sample_flow_time(len(t_coords_lens), fm, dev)
+            t_pts = torch.repeat_interleave(t_s, torch.tensor(t_coords_lens, device=dev))
+            x_t, x_prev_c, _ = fmatch.training_inputs(x_tgt, x_prev, t_pts, fm)
+            pred = denoise(x_t, x_prev_c, t_pts)
+            if self.training:
+                pred = fmatch.apply_loss_weighting(pred, x_tgt, t_pts, fm)
+            return pred
+
+        # sampling: num_members ODE integrations, each conditioned on its own previous state
+        inf = fm["inference"]
+        n_mem, rho = int(inf["num_members"]), float(inf["noise_correlation"])
+        state = fm_state.setdefault(stream_name, {"prev": None, "eps": None})
+        prev = state["prev"]
+        if prev is None or prev.shape[1] != n_pts:
+            # first step: analysis x_{k-1} (truth at the initial time) for every member
+            prev = torch.nan_to_num(x_prev).unsqueeze(0).expand(n_mem, -1, -1)
+        members, eps_all = [], []
+        for m in range(n_mem):
+            prev_eps = state["eps"][m] if state["eps"] is not None else None
+            eps = fmatch.next_noise(prev_eps, (n_pts, num_ch), dev, rho)
+
+            def denoise_m(x_t, x_prev_c, t):
+                return denoise(x_t, x_prev_c, t.expand(n_pts))[0].float()
+
+            members.append(fmatch.sample_member(denoise_m, prev[m], eps, fm))
+            eps_all.append(eps)
+        pred = torch.stack(members, 0)
+        state["prev"], state["eps"] = pred.detach(), torch.stack(eps_all, 0)
+        # same dtype as the decoder output (exact identity with the deterministic decoder at init)
+        return pred.to(out_dtype.get("dtype", pred.dtype))
 
     def predict_latent(
         self,
@@ -777,6 +890,7 @@ class Model(torch.nn.Module):
         tokens: torch.Tensor,
         batch: ModelBatch,
         output: ModelOutput,
+        fm_state: dict | None = None,
     ) -> ModelOutput:
         """
         Compute decoder-based predictions
@@ -860,16 +974,24 @@ class Model(torch.nn.Module):
                         tcs_lens,
                     ).unsqueeze(0)  # add ensemble dim: shape is then [1, preds_per_coord, channels]
                 else:
-                    tc_tokens = self.target_token_engines[stream_name](
-                        latent=tokens_nbors,
-                        output=tc_tokens,
-                        latent_lens=tokens_nbors_lens,
-                        output_lens=tcs_lens,
-                        coordinates=t_coords,
-                    )
 
-                    # final prediction head to map back to physical space
-                    pred = self.pred_heads[stream_name](tc_tokens)
+                    def decode(queries, stream_name=stream_name, tcs_lens=tcs_lens):
+                        toks = self.target_token_engines[stream_name](
+                            latent=tokens_nbors,
+                            output=queries,
+                            latent_lens=tokens_nbors_lens,
+                            output_lens=tcs_lens,
+                            coordinates=t_coords,
+                        )
+                        # final prediction head to map back to physical space
+                        return self.pred_heads[stream_name](toks)
+
+                    if self.fm_conditioners is not None and stream_name in self.fm_conditioners:
+                        pred = self.predict_flow_matching(
+                            stream_name, step, batch, tc_tokens, decode, t_coords_lens, fm_state
+                        )
+                    else:
+                        pred = decode(tc_tokens)
 
             # recover batch dimension (ragged, so as list)
             pred = torch.split(pred, t_coords_lens, dim=1)

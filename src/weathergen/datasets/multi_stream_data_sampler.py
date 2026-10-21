@@ -7,6 +7,7 @@
 # granted to it by virtue of its status as an intergovernmental organisation
 # nor does it submit to any jurisdiction.
 
+import copy
 import dataclasses
 import logging
 import pathlib
@@ -32,6 +33,7 @@ from weathergen.datasets.tokenizer_masking import TokenizerMasking
 from weathergen.datasets.utils import (
     get_tokens_lens,
 )
+from weathergen.model.flow_matching import get_flow_matching_config
 from weathergen.model.forcing_injection import get_forcing_reinjection_config
 from weathergen.readers_extra.registry import get_extra_reader
 from weathergen.train.utils import TRAIN, Stage, get_batch_size_from_config
@@ -154,6 +156,22 @@ class MultiStreamDataSampler(torch.utils.data.IterableDataset):
         assert not unknown, f"forcing_reinjection.streams not in the streams config: {unknown}"
         if self.reinject_streams and is_root():
             logger.info(f"Forcing re-injection at every forecast step for: {self.reinject_streams}")
+
+        # flow matching: the source samples of these streams also get x_k and x_{k-1}
+        self.fm_cfg = get_flow_matching_config(cf)
+        self.fm_streams = self.fm_cfg["streams"]
+        for name in self.fm_streams:
+            assert name in self.streams_datasets, f"flow_matching.streams: unknown stream {name}"
+            info = self.streams_datasets[name].info
+            # x_{k-1} is taken at the points of x_k: target points must not change between steps
+            assert info.get("max_num_targets", -1) in (-1, None), (
+                f"flow matching stream {name} needs max_num_targets: -1"
+            )
+            assert not info.get("shuffle_target", False), (
+                f"flow matching stream {name} needs shuffle_target: False"
+            )
+        if self.fm_streams and is_root():
+            logger.info(f"Flow matching decoders for: {self.fm_streams}")
 
         # RNG seed setup
         rs = cf.data_loading.rng_seed
@@ -457,10 +475,13 @@ Set repeat_data_in_mini_epoch to True if this is undesired."
         output_data: list,
         output_tokens: list,
         target_mask,
+        fm_init_data=None,
     ) -> StreamData:
         """
         Generate stream data for output
 
+        fm_init_data: flow matching only, data at the window before the first output step
+        (x_{k-1} of the first step). None for non flow-matching streams.
         """
 
         # collect for all forecast steps
@@ -485,6 +506,13 @@ Set repeat_data_in_mini_epoch to True if this is undesired."
                     target_mask,
                 )
                 stream_data.add_target_coords(self._stage, timestep_idx, tc, tc_l, rdata.is_spoof)
+
+                if fm_init_data is not None:
+                    rdata_prev = fm_init_data if step == 0 else output_data[step - 1]
+                    x_k, x_prev = self._fm_values(
+                        stream_info, rdata, rdata_prev, token_data, time_win_target, target_mask
+                    )
+                    stream_data.add_fm_values(timestep_idx, x_k, x_prev)
 
             if "target_values" in mode:
                 (tt_cells, tt_t, tt_c, idxs_inv) = self.tokenizer.get_target_values(
@@ -514,6 +542,7 @@ Set repeat_data_in_mini_epoch to True if this is undesired."
         output_tokens: list,
         output_mask,
         input_mask,
+        fm_init_data=None,
     ) -> StreamData:
         """
         Return one batch of data
@@ -563,6 +592,7 @@ Set repeat_data_in_mini_epoch to True if this is undesired."
             output_data,
             output_tokens,
             output_mask,
+            fm_init_data=fm_init_data,
         )
 
         return stream_data
@@ -618,6 +648,36 @@ Set repeat_data_in_mini_epoch to True if this is undesired."
             output_data += [rdata]
 
         return (input_data, output_data)
+
+    def _fm_values(self, stream_info, rdata, rdata_prev, token_data, time_win, target_mask):
+        """
+        Flow matching: normalised values x_k at the target points of rdata and x_{k-1} from
+        rdata_prev at the SAME points and in the same order (rdata_prev is tokenized with the
+        indexing of rdata). Returns two float32 tensors (N, C).
+        """
+        tw = (time_win.start, time_win.end)
+        x_k = self.tokenizer.get_target_values(stream_info, rdata, token_data, tw, target_mask)[0]
+        x_k = torch.as_tensor(np.asarray(x_k), dtype=torch.float32)
+
+        same_points = (
+            rdata_prev is not None
+            and not rdata_prev.is_empty()
+            and rdata_prev.coords.shape == rdata.coords.shape
+            and np.allclose(np.asarray(rdata_prev.coords), np.asarray(rdata.coords), atol=1e-4)
+        )
+        if not same_points:
+            prev_missing = rdata_prev is None or rdata_prev.is_empty()
+            if prev_missing or getattr(rdata_prev, "is_spoof", False):
+                return x_k, torch.full_like(x_k, float("nan"))
+            raise ValueError(
+                f"flow matching stream {stream_info['name']}: target points differ between "
+                "consecutive steps; x_(k-1) cannot be aligned with x_k"
+            )
+        aligned = copy.copy(rdata)
+        aligned.data = rdata_prev.data
+        x_prev = self.tokenizer.get_target_values(stream_info, aligned, token_data, tw, target_mask)
+        x_prev = torch.as_tensor(np.asarray(x_prev[0]), dtype=torch.float32)
+        return x_k, x_prev
 
     def _build_forcing_samples(
         self, base_idx: int, num_forecast_steps: int, num_source_samples: int
@@ -769,6 +829,12 @@ Set repeat_data_in_mini_epoch to True if this is undesired."
             input_tokens = self.tokenizer.get_tokens_windows(stream_info, input_data, True)
             output_tokens = self.tokenizer.get_tokens_windows(stream_info, output_data, False)
 
+            # flow matching: target-like data at the window before the first output step
+            fm_init_data = None
+            if stream_name in self.fm_streams and num_forecast_steps > 0:
+                widx0 = idx + (self.time_step * (self.output_offset - 1)) // self.step_timedelta
+                fm_init_data = collect_datasources(stream_ds, widx0, "target", self.rng)
+
             for sidx, source_mask in enumerate(source_masks.masks):
                 # Map each source to its target
                 tidx = source_to_target[sidx].item()
@@ -784,6 +850,7 @@ Set repeat_data_in_mini_epoch to True if this is undesired."
                     output_tokens,
                     output_mask=target_masks.masks[tidx],
                     input_mask=source_mask,
+                    fm_init_data=fm_init_data,
                 )
 
                 batch.add_source_stream(sidx, tidx, stream_name, sdata, source_masks.metadata[sidx])

@@ -233,6 +233,11 @@ class Trainer(TrainerBase):
             cf.with_fsdp,
         )
 
+        # flow matching: generate members by ODE sampling at inference (no-op if disabled)
+        model_core = getattr(self.model, "module", self.model)
+        if hasattr(model_core, "set_flow_matching_sampling"):
+            model_core.set_flow_matching_sampling(True)
+
         # get target_aux calculators for different loss terms
         self.target_and_aux_calculators_val = self.get_target_aux_calculators(self.test_cfg)
 
