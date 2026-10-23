@@ -302,10 +302,40 @@ class DataReaderGREP(DataReaderTimestep):
                 np.float32
             )
 
+        # ---- Optional spatial domain (stream config `domain`) ----------------
+        # domain: {lat_min: 50, lat_max: 90, lon_min: -180, lon_max: 180}
+        # Points outside get NaN coords and are dropped like masked points.
+        # lon_min > lon_max means a box crossing the dateline.
+        domain = self._stream_info.get("domain")
+        if domain:
+            lat_c, lon_c = self.coords_single[:, 0], self.coords_single[:, 1]
+            out = (lat_c < domain.get("lat_min", -90.0)) | (lat_c > domain.get("lat_max", 90.0))
+            lo0, lo1 = domain.get("lon_min", -180.0), domain.get("lon_max", 180.0)
+            if lo0 <= lo1:
+                out |= (lon_c < lo0) | (lon_c > lo1)
+            else:
+                out |= (lon_c < lo0) & (lon_c > lo1)
+            self.coords_single[out] = np.nan
+            _logger.info(
+                f"{self._stream_info['name']}: domain {dict(domain)} keeps "
+                f"{int(np.isfinite(self.coords_single[:, 0]).sum())} / {len(lat_c)} points"
+            )
+
         # ---- Statistics ------------------------------------------------------
         # mean/stdev must be arrays of length == len(available_vars) so that
         # the base-class _normalize/_denormalize can index them with source_idx / target_idx.
         self.mean, self.stdev = self._load_statistics(available_vars, ds)
+
+        # ---- Optional statistics override (stream config `stats_override`) ---
+        # e.g. statistics recomputed on the stream `domain` instead of the global ones
+        overrides = self._stream_info.get("stats_override") or {}
+        for ch, ms in dict(overrides).items():
+            if ch not in available_vars:
+                _logger.warning(f"{self._stream_info['name']}: stats_override for unknown '{ch}'")
+                continue
+            i = available_vars.index(ch)
+            self.mean[i], self.stdev[i] = float(ms[0]), float(ms[1])
+            _logger.info(f"{self._stream_info['name']}: {ch} mean/std overridden -> {ms[0]}, {ms[1]}")
 
         # ---- Length (timesteps inside the window) ----------------------------
         time_mask = (time_coord >= self._tw_handler.t_start) & (time_coord < self._tw_handler.t_end)
