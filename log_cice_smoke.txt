@@ -1,0 +1,434 @@
+Logging set up. Logs are in /e/scratch/weatherai/shared_work/logs/ft_cice_smoke
+TimeWindowHandler: start=1994-01-01T00:00:00.000000000, end=2022-12-31T00:00:00.000000000, len=24:00:00, step=24:00:00
+forecast_steps : 3
+Sufficient available samples in the time range specified
+Opening dataset with type: grep from stream config CICE.
+CICE: dataset opened with Dask.
+Dataset 'CICE' uses curvilinear grid (TLAT/TLON).
+CICE selected source channels: ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel'] (indices: [np.int64(0), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11)])
+CICE selected target channels: ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel'] (indices: [np.int64(0), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11)])
+CICE: domain {'lat_min': 45.0, 'lat_max': 90.0} keeps 160744 / 1512000 points
+CICE: aice mean/std overridden -> 0.38677, 0.45656
+CICE: hi mean/std overridden -> 0.716027, 1.01352
+CICE: hs mean/std overridden -> 0.0311995, 0.0618096
+CICE: strength mean/std overridden -> 9683.85, 19886.7
+CICE: sig1 mean/std overridden -> -0.215904, 0.19174
+CICE: sig2 mean/std overridden -> -0.489426, 0.206826
+CICE: uvel mean/std overridden -> -0.00161477, 0.0701565
+CICE: vvel mean/std overridden -> -0.00829278, 0.0745611
+CICE: source channels: ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel']
+CICE: target channels: ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel']
+CICE: grid shape: 1050 x 1440
+Opening dataset with type: anemoi from stream config ERA5.
+No channel for ERA5 for target.
+ERA5: source channels: ['10u', '10v', '2d', '2t', 'sp', 'tp']
+ERA5: target channels: []
+ERA5: geoinfo channels: ['z', 'lsm', 'slor', 'sdor', 'insolation', 'cos_local_time', 'sin_local_time', 'cos_julian_day', 'sin_julian_day']
+Opening dataset with type: grep from stream config CGLORS-OCEAN.
+CGLORS-OCEAN: dataset opened with Dask.
+Dataset 'CGLORS-OCEAN' uses curvilinear grid (nav_lat/nav_lon).
+CGLORS-OCEAN selected source channels: ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos'] (indices: [np.int64(119), np.int64(156), np.int64(189), np.int64(221), np.int64(255)])
+CGLORS-OCEAN selected target channels: ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos'] (indices: [np.int64(119), np.int64(156), np.int64(189), np.int64(221), np.int64(255)])
+CGLORS-OCEAN: source channels: ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos']
+CGLORS-OCEAN: target channels: ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos']
+CGLORS-OCEAN: grid shape: 1050 x 1440
+Opening dataset with type: grep from stream config CGLORS-OCEAN-2-300m.
+CGLORS-OCEAN-2-300m: dataset opened with Dask.
+Dataset 'CGLORS-OCEAN-2-300m' uses curvilinear grid (nav_lat/nav_lon).
+CGLORS-OCEAN-2-300m selected source channels: ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9'] (indices: [np.int64(108), np.int64(142), np.int64(179), np.int64(212), np.int64(244), np.int64(126), np.int64(163), np.int64(196), np.int64(228), np.int64(135), np.int64(172), np.int64(205), np.int64(237), np.int64(144), np.int64(181), np.int64(214), np.int64(246), np.int64(150), np.int64(187), np.int64(220), np.int64(252), np.int64(124), np.int64(161), np.int64(194), np.int64(226), np.int64(129), np.int64(166), np.int64(199), np.int64(231), np.int64(136), np.int64(173), np.int64(206), np.int64(238)])
+CGLORS-OCEAN-2-300m selected target channels: ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9'] (indices: [np.int64(108), np.int64(142), np.int64(179), np.int64(212), np.int64(244), np.int64(126), np.int64(163), np.int64(196), np.int64(228), np.int64(135), np.int64(172), np.int64(205), np.int64(237), np.int64(144), np.int64(181), np.int64(214), np.int64(246), np.int64(150), np.int64(187), np.int64(220), np.int64(252), np.int64(124), np.int64(161), np.int64(194), np.int64(226), np.int64(129), np.int64(166), np.int64(199), np.int64(231), np.int64(136), np.int64(173), np.int64(206), np.int64(238)])
+CGLORS-OCEAN-2-300m: source channels: ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9']
+CGLORS-OCEAN-2-300m: target channels: ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9']
+CGLORS-OCEAN-2-300m: grid shape: 1050 x 1440
+Opening dataset with type: grep from stream config CGLORS-OCEAN-370-5000m.
+CGLORS-OCEAN-370-5000m: dataset opened with Dask.
+Dataset 'CGLORS-OCEAN-370-5000m' uses curvilinear grid (nav_lat/nav_lon).
+CGLORS-OCEAN-370-5000m selected source channels: ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5'] (indices: [np.int64(138), np.int64(175), np.int64(208), np.int64(240), np.int64(145), np.int64(182), np.int64(215), np.int64(247), np.int64(149), np.int64(186), np.int64(219), np.int64(251), np.int64(123), np.int64(160), np.int64(193), np.int64(225), np.int64(134), np.int64(171), np.int64(204), np.int64(236), np.int64(137), np.int64(174), np.int64(207), np.int64(239), np.int64(143), np.int64(180), np.int64(213), np.int64(245)])
+CGLORS-OCEAN-370-5000m selected target channels: ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5'] (indices: [np.int64(138), np.int64(175), np.int64(208), np.int64(240), np.int64(145), np.int64(182), np.int64(215), np.int64(247), np.int64(149), np.int64(186), np.int64(219), np.int64(251), np.int64(123), np.int64(160), np.int64(193), np.int64(225), np.int64(134), np.int64(171), np.int64(204), np.int64(236), np.int64(137), np.int64(174), np.int64(207), np.int64(239), np.int64(143), np.int64(180), np.int64(213), np.int64(245)])
+CGLORS-OCEAN-370-5000m: source channels: ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5']
+CGLORS-OCEAN-370-5000m: target channels: ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5']
+CGLORS-OCEAN-370-5000m: grid shape: 1050 x 1440
+TimeWindowHandler: start=2023-01-01T00:00:00.000000000, end=2023-12-31T00:00:00.000000000, len=24:00:00, step=24:00:00
+forecast_steps : 3
+Sufficient available samples in the time range specified
+Opening dataset with type: grep from stream config CICE.
+CICE: dataset opened with Dask.
+Dataset 'CICE' uses curvilinear grid (TLAT/TLON).
+CICE selected source channels: ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel'] (indices: [np.int64(0), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11)])
+CICE selected target channels: ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel'] (indices: [np.int64(0), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11)])
+CICE: domain {'lat_min': 45.0, 'lat_max': 90.0} keeps 160744 / 1512000 points
+CICE: aice mean/std overridden -> 0.38677, 0.45656
+CICE: hi mean/std overridden -> 0.716027, 1.01352
+CICE: hs mean/std overridden -> 0.0311995, 0.0618096
+CICE: strength mean/std overridden -> 9683.85, 19886.7
+CICE: sig1 mean/std overridden -> -0.215904, 0.19174
+CICE: sig2 mean/std overridden -> -0.489426, 0.206826
+CICE: uvel mean/std overridden -> -0.00161477, 0.0701565
+CICE: vvel mean/std overridden -> -0.00829278, 0.0745611
+CICE: source channels: ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel']
+CICE: target channels: ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel']
+CICE: grid shape: 1050 x 1440
+Opening dataset with type: anemoi from stream config ERA5.
+No channel for ERA5 for target.
+ERA5: source channels: ['10u', '10v', '2d', '2t', 'sp', 'tp']
+ERA5: target channels: []
+ERA5: geoinfo channels: ['z', 'lsm', 'slor', 'sdor', 'insolation', 'cos_local_time', 'sin_local_time', 'cos_julian_day', 'sin_julian_day']
+Opening dataset with type: grep from stream config CGLORS-OCEAN.
+CGLORS-OCEAN: dataset opened with Dask.
+Dataset 'CGLORS-OCEAN' uses curvilinear grid (nav_lat/nav_lon).
+CGLORS-OCEAN selected source channels: ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos'] (indices: [np.int64(119), np.int64(156), np.int64(189), np.int64(221), np.int64(255)])
+CGLORS-OCEAN selected target channels: ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos'] (indices: [np.int64(119), np.int64(156), np.int64(189), np.int64(221), np.int64(255)])
+CGLORS-OCEAN: source channels: ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos']
+CGLORS-OCEAN: target channels: ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos']
+CGLORS-OCEAN: grid shape: 1050 x 1440
+Opening dataset with type: grep from stream config CGLORS-OCEAN-2-300m.
+CGLORS-OCEAN-2-300m: dataset opened with Dask.
+Dataset 'CGLORS-OCEAN-2-300m' uses curvilinear grid (nav_lat/nav_lon).
+CGLORS-OCEAN-2-300m selected source channels: ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9'] (indices: [np.int64(108), np.int64(142), np.int64(179), np.int64(212), np.int64(244), np.int64(126), np.int64(163), np.int64(196), np.int64(228), np.int64(135), np.int64(172), np.int64(205), np.int64(237), np.int64(144), np.int64(181), np.int64(214), np.int64(246), np.int64(150), np.int64(187), np.int64(220), np.int64(252), np.int64(124), np.int64(161), np.int64(194), np.int64(226), np.int64(129), np.int64(166), np.int64(199), np.int64(231), np.int64(136), np.int64(173), np.int64(206), np.int64(238)])
+CGLORS-OCEAN-2-300m selected target channels: ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9'] (indices: [np.int64(108), np.int64(142), np.int64(179), np.int64(212), np.int64(244), np.int64(126), np.int64(163), np.int64(196), np.int64(228), np.int64(135), np.int64(172), np.int64(205), np.int64(237), np.int64(144), np.int64(181), np.int64(214), np.int64(246), np.int64(150), np.int64(187), np.int64(220), np.int64(252), np.int64(124), np.int64(161), np.int64(194), np.int64(226), np.int64(129), np.int64(166), np.int64(199), np.int64(231), np.int64(136), np.int64(173), np.int64(206), np.int64(238)])
+CGLORS-OCEAN-2-300m: source channels: ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9']
+CGLORS-OCEAN-2-300m: target channels: ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9']
+CGLORS-OCEAN-2-300m: grid shape: 1050 x 1440
+Opening dataset with type: grep from stream config CGLORS-OCEAN-370-5000m.
+CGLORS-OCEAN-370-5000m: dataset opened with Dask.
+Dataset 'CGLORS-OCEAN-370-5000m' uses curvilinear grid (nav_lat/nav_lon).
+CGLORS-OCEAN-370-5000m selected source channels: ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5'] (indices: [np.int64(138), np.int64(175), np.int64(208), np.int64(240), np.int64(145), np.int64(182), np.int64(215), np.int64(247), np.int64(149), np.int64(186), np.int64(219), np.int64(251), np.int64(123), np.int64(160), np.int64(193), np.int64(225), np.int64(134), np.int64(171), np.int64(204), np.int64(236), np.int64(137), np.int64(174), np.int64(207), np.int64(239), np.int64(143), np.int64(180), np.int64(213), np.int64(245)])
+CGLORS-OCEAN-370-5000m selected target channels: ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5'] (indices: [np.int64(138), np.int64(175), np.int64(208), np.int64(240), np.int64(145), np.int64(182), np.int64(215), np.int64(247), np.int64(149), np.int64(186), np.int64(219), np.int64(251), np.int64(123), np.int64(160), np.int64(193), np.int64(225), np.int64(134), np.int64(171), np.int64(204), np.int64(236), np.int64(137), np.int64(174), np.int64(207), np.int64(239), np.int64(143), np.int64(180), np.int64(213), np.int64(245)])
+CGLORS-OCEAN-370-5000m: source channels: ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5']
+CGLORS-OCEAN-370-5000m: target channels: ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5']
+CGLORS-OCEAN-370-5000m: grid shape: 1050 x 1440
+CICE :: coord embed: :: [256, 256, 256]
+CGLORS-OCEAN :: coord embed: :: [256, 256, 256]
+CGLORS-OCEAN-2-300m :: coord embed: :: [256, 256, 256]
+CGLORS-OCEAN-370-5000m :: coord embed: :: [256, 256, 256]
+Freeze block StreamEmbedder_ERA5
+Freeze block StreamEmbedder_CGLORS-OCEAN
+Freeze block StreamEmbedder_CGLORS-OCEAN-2-300m
+Freeze block StreamEmbedder_CGLORS-OCEAN-370-5000m
+Freeze block embed_target_coords_CGLORS-OCEAN
+Freeze block embed_target_coords_CGLORS-OCEAN-2-300m
+Freeze block embed_target_coords_CGLORS-OCEAN-370-5000m
+Freeze block TargetPredictionEngine_CGLORS-OCEAN
+Freeze block TargetPredictionEngine_CGLORS-OCEAN-2-300m
+Freeze block TargetPredictionEngine_CGLORS-OCEAN-370-5000m
+Freeze block EnsPredictionHead_CGLORS-OCEAN
+Freeze block EnsPredictionHead_CGLORS-OCEAN-2-300m
+Freeze block EnsPredictionHead_CGLORS-OCEAN-370-5000m
+Continuing run with id=d5xirkmf at mini_epoch -1.
+Missing keys when loading model: ['encoder.embed_engine.embeds.CICE.layers.0.proj_heads_q.weight', 'encoder.embed_engine.embeds.CICE.layers.0.proj_heads_k.weight', 'encoder.embed_engine.embeds.CICE.layers.0.proj_heads_v.weight', 'encoder.embed_engine.embeds.CICE.layers.0.proj_out.weight', 'encoder.embed_engine.embeds.CICE.layers.1.layers.0.weight', 'encoder.embed_engine.embeds.CICE.layers.1.layers.0.bias', 'encoder.embed_engine.embeds.CICE.layers.1.layers.1.weight', 'encoder.embed_engine.embeds.CICE.layers.1.layers.1.bias', 'encoder.embed_engine.embeds.CICE.layers.1.layers.4.weight', 'encoder.embed_engine.embeds.CICE.layers.1.layers.4.bias', 'encoder.embed_engine.embeds.CICE.layers.2.proj_heads_q.weight', 'encoder.embed_engine.embeds.CICE.layers.2.proj_heads_k.weight', 'encoder.embed_engine.embeds.CICE.layers.2.proj_heads_v.weight', 'encoder.embed_engine.embeds.CICE.layers.2.proj_out.weight', 'encoder.embed_engine.embeds.CICE.layers.3.layers.0.weight', 'encoder.embed_engine.embeds.CICE.layers.3.layers.0.bias', 'encoder.embed_engine.embeds.CICE.layers.3.layers.1.weight', 'encoder.embed_engine.embeds.CICE.layers.3.layers.1.bias', 'encoder.embed_engine.embeds.CICE.layers.3.layers.4.weight', 'encoder.embed_engine.embeds.CICE.layers.3.layers.4.bias', 'encoder.embed_engine.embeds.CICE.embed.weight', 'encoder.embed_engine.embeds.CICE.embed.bias', 'encoder.embed_engine.embeds.CICE.unembed.0.weight', 'encoder.embed_engine.embeds.CICE.unembed.0.bias', 'encoder.embed_engine.embeds.CICE.unembed.1.weight', 'encoder.embed_engine.embeds.CICE.unembed.1.bias', 'encoder.embed_engine.embeds.CICE.unembed.2.weight', 'encoder.embed_engine.embeds.CICE.unembed.2.bias', 'encoder.embed_engine.embeds.CICE.unembed.3.weight', 'encoder.embed_engine.embeds.CICE.unembed.3.bias', 'encoder.embed_engine.embeds.CICE.unembed.4.weight', 'encoder.embed_engine.embeds.CICE.unembed.4.bias', 'encoder.embed_engine.embeds.CICE.unembed.5.weight', 'encoder.embed_engine.embeds.CICE.unembed.5.bias', 'encoder.embed_engine.embeds.CICE.unembed.6.weight', 'encoder.embed_engine.embeds.CICE.unembed.6.bias', 'encoder.embed_engine.embeds.CICE.unembed.7.weight', 'encoder.embed_engine.embeds.CICE.unembed.7.bias', 'encoder.embed_engine.embeds.CICE.unembed.8.weight', 'encoder.embed_engine.embeds.CICE.unembed.8.bias', 'encoder.embed_engine.embeds.CICE.unembed.9.weight', 'encoder.embed_engine.embeds.CICE.unembed.9.bias', 'encoder.embed_engine.embeds.CICE.unembed.10.weight', 'encoder.embed_engine.embeds.CICE.unembed.10.bias', 'encoder.embed_engine.embeds.CICE.unembed.11.weight', 'encoder.embed_engine.embeds.CICE.unembed.11.bias', 'encoder.embed_engine.embeds.CICE.unembed.12.weight', 'encoder.embed_engine.embeds.CICE.unembed.12.bias', 'encoder.embed_engine.embeds.CICE.unembed.13.weight', 'encoder.embed_engine.embeds.CICE.unembed.13.bias', 'encoder.embed_engine.embeds.CICE.unembed.14.weight', 'encoder.embed_engine.embeds.CICE.unembed.14.bias', 'encoder.embed_engine.embeds.CICE.unembed.15.weight', 'encoder.embed_engine.embeds.CICE.unembed.15.bias', 'encoder.embed_engine.embeds.CICE.ln_final.0.weight', 'encoder.embed_engine.embeds.CICE.ln_final.0.bias', 'encoder.embed_engine.embeds.CICE.ln_final.1.weight', 'encoder.embed_engine.embeds.CICE.ln_final.1.bias', 'encoder.embed_engine.embeds.CICE.ln_final.2.weight', 'encoder.embed_engine.embeds.CICE.ln_final.2.bias', 'encoder.embed_engine.embeds.CICE.ln_final.3.weight', 'encoder.embed_engine.embeds.CICE.ln_final.3.bias', 'encoder.embed_engine.embeds.CICE.ln_final.4.weight', 'encoder.embed_engine.embeds.CICE.ln_final.4.bias', 'encoder.embed_engine.embeds.CICE.ln_final.5.weight', 'encoder.embed_engine.embeds.CICE.ln_final.5.bias', 'encoder.embed_engine.embeds.CICE.ln_final.6.weight', 'encoder.embed_engine.embeds.CICE.ln_final.6.bias', 'encoder.embed_engine.embeds.CICE.ln_final.7.weight', 'encoder.embed_engine.embeds.CICE.ln_final.7.bias', 'encoder.embed_engine.embeds.CICE.ln_final.8.weight', 'encoder.embed_engine.embeds.CICE.ln_final.8.bias', 'encoder.embed_engine.embeds.CICE.ln_final.9.weight', 'encoder.embed_engine.embeds.CICE.ln_final.9.bias', 'encoder.embed_engine.embeds.CICE.ln_final.10.weight', 'encoder.embed_engine.embeds.CICE.ln_final.10.bias', 'encoder.embed_engine.embeds.CICE.ln_final.11.weight', 'encoder.embed_engine.embeds.CICE.ln_final.11.bias', 'encoder.embed_engine.embeds.CICE.ln_final.12.weight', 'encoder.embed_engine.embeds.CICE.ln_final.12.bias', 'encoder.embed_engine.embeds.CICE.ln_final.13.weight', 'encoder.embed_engine.embeds.CICE.ln_final.13.bias', 'encoder.embed_engine.embeds.CICE.ln_final.14.weight', 'encoder.embed_engine.embeds.CICE.ln_final.14.bias', 'encoder.embed_engine.embeds.CICE.ln_final.15.weight', 'encoder.embed_engine.embeds.CICE.ln_final.15.bias', 'embed_target_coords.CICE.linear.weight', 'target_token_engines.CICE.tte.0.lnorm_in_q.embed_aux.0.weight', 'target_token_engines.CICE.tte.0.lnorm_in_q.embed_aux.0.bias', 'target_token_engines.CICE.tte.0.lnorm_in_q.embed_aux.2.weight', 'target_token_engines.CICE.tte.0.lnorm_in_q.embed_aux.2.bias', 'target_token_engines.CICE.tte.0.proj_heads_q.weight', 'target_token_engines.CICE.tte.0.proj_heads_k.weight', 'target_token_engines.CICE.tte.0.proj_heads_v.weight', 'target_token_engines.CICE.tte.0.proj_out.weight', 'target_token_engines.CICE.tte.1.lnorm.embed_aux.0.weight', 'target_token_engines.CICE.tte.1.lnorm.embed_aux.0.bias', 'target_token_engines.CICE.tte.1.lnorm.embed_aux.2.weight', 'target_token_engines.CICE.tte.1.lnorm.embed_aux.2.bias', 'target_token_engines.CICE.tte.1.proj_heads_q.weight', 'target_token_engines.CICE.tte.1.proj_heads_k.weight', 'target_token_engines.CICE.tte.1.proj_heads_v.weight', 'target_token_engines.CICE.tte.1.proj_out.weight', 'target_token_engines.CICE.tte.2.layers.0.embed_aux.0.weight', 'target_token_engines.CICE.tte.2.layers.0.embed_aux.0.bias', 'target_token_engines.CICE.tte.2.layers.0.embed_aux.2.weight', 'target_token_engines.CICE.tte.2.layers.0.embed_aux.2.bias', 'target_token_engines.CICE.tte.2.layers.1.weight', 'target_token_engines.CICE.tte.2.layers.1.bias', 'target_token_engines.CICE.tte.2.layers.4.weight', 'target_token_engines.CICE.tte.2.layers.4.bias', 'target_token_engines.CICE.tte.3.lnorm_in_q.embed_aux.0.weight', 'target_token_engines.CICE.tte.3.lnorm_in_q.embed_aux.0.bias', 'target_token_engines.CICE.tte.3.lnorm_in_q.embed_aux.2.weight', 'target_token_engines.CICE.tte.3.lnorm_in_q.embed_aux.2.bias', 'target_token_engines.CICE.tte.3.proj_heads_q.weight', 'target_token_engines.CICE.tte.3.proj_heads_k.weight', 'target_token_engines.CICE.tte.3.proj_heads_v.weight', 'target_token_engines.CICE.tte.3.proj_out.weight', 'target_token_engines.CICE.tte.4.lnorm.embed_aux.0.weight', 'target_token_engines.CICE.tte.4.lnorm.embed_aux.0.bias', 'target_token_engines.CICE.tte.4.lnorm.embed_aux.2.weight', 'target_token_engines.CICE.tte.4.lnorm.embed_aux.2.bias', 'target_token_engines.CICE.tte.4.proj_heads_q.weight', 'target_token_engines.CICE.tte.4.proj_heads_k.weight', 'target_token_engines.CICE.tte.4.proj_heads_v.weight', 'target_token_engines.CICE.tte.4.proj_out.weight', 'target_token_engines.CICE.tte.5.layers.0.embed_aux.0.weight', 'target_token_engines.CICE.tte.5.layers.0.embed_aux.0.bias', 'target_token_engines.CICE.tte.5.layers.0.embed_aux.2.weight', 'target_token_engines.CICE.tte.5.layers.0.embed_aux.2.bias', 'target_token_engines.CICE.tte.5.layers.1.weight', 'target_token_engines.CICE.tte.5.layers.1.bias', 'target_token_engines.CICE.tte.5.layers.4.weight', 'target_token_engines.CICE.tte.5.layers.4.bias', 'pred_heads.CICE.pred_heads.0.0.weight', 'pred_heads.CICE.pred_heads.0.0.bias']
+CICE :: coord embed: :: [256, 256, 256]
+CGLORS-OCEAN :: coord embed: :: [256, 256, 256]
+CGLORS-OCEAN-2-300m :: coord embed: :: [256, 256, 256]
+CGLORS-OCEAN-370-5000m :: coord embed: :: [256, 256, 256]
+Freeze block StreamEmbedder_ERA5
+Freeze block StreamEmbedder_CGLORS-OCEAN
+Freeze block StreamEmbedder_CGLORS-OCEAN-2-300m
+Freeze block StreamEmbedder_CGLORS-OCEAN-370-5000m
+Freeze block embed_target_coords_CGLORS-OCEAN
+Freeze block embed_target_coords_CGLORS-OCEAN-2-300m
+Freeze block embed_target_coords_CGLORS-OCEAN-370-5000m
+Freeze block TargetPredictionEngine_CGLORS-OCEAN
+Freeze block TargetPredictionEngine_CGLORS-OCEAN-2-300m
+Freeze block TargetPredictionEngine_CGLORS-OCEAN-370-5000m
+Freeze block EnsPredictionHead_CGLORS-OCEAN
+Freeze block EnsPredictionHead_CGLORS-OCEAN-2-300m
+Freeze block EnsPredictionHead_CGLORS-OCEAN-370-5000m
+Continuing run with id=d5xirkmf at mini_epoch -1.
+Missing keys when loading model: ['encoder.embed_engine.embeds.CICE.layers.0.proj_heads_q.weight', 'encoder.embed_engine.embeds.CICE.layers.0.proj_heads_k.weight', 'encoder.embed_engine.embeds.CICE.layers.0.proj_heads_v.weight', 'encoder.embed_engine.embeds.CICE.layers.0.proj_out.weight', 'encoder.embed_engine.embeds.CICE.layers.1.layers.0.weight', 'encoder.embed_engine.embeds.CICE.layers.1.layers.0.bias', 'encoder.embed_engine.embeds.CICE.layers.1.layers.1.weight', 'encoder.embed_engine.embeds.CICE.layers.1.layers.1.bias', 'encoder.embed_engine.embeds.CICE.layers.1.layers.4.weight', 'encoder.embed_engine.embeds.CICE.layers.1.layers.4.bias', 'encoder.embed_engine.embeds.CICE.layers.2.proj_heads_q.weight', 'encoder.embed_engine.embeds.CICE.layers.2.proj_heads_k.weight', 'encoder.embed_engine.embeds.CICE.layers.2.proj_heads_v.weight', 'encoder.embed_engine.embeds.CICE.layers.2.proj_out.weight', 'encoder.embed_engine.embeds.CICE.layers.3.layers.0.weight', 'encoder.embed_engine.embeds.CICE.layers.3.layers.0.bias', 'encoder.embed_engine.embeds.CICE.layers.3.layers.1.weight', 'encoder.embed_engine.embeds.CICE.layers.3.layers.1.bias', 'encoder.embed_engine.embeds.CICE.layers.3.layers.4.weight', 'encoder.embed_engine.embeds.CICE.layers.3.layers.4.bias', 'encoder.embed_engine.embeds.CICE.embed.weight', 'encoder.embed_engine.embeds.CICE.embed.bias', 'encoder.embed_engine.embeds.CICE.unembed.0.weight', 'encoder.embed_engine.embeds.CICE.unembed.0.bias', 'encoder.embed_engine.embeds.CICE.unembed.1.weight', 'encoder.embed_engine.embeds.CICE.unembed.1.bias', 'encoder.embed_engine.embeds.CICE.unembed.2.weight', 'encoder.embed_engine.embeds.CICE.unembed.2.bias', 'encoder.embed_engine.embeds.CICE.unembed.3.weight', 'encoder.embed_engine.embeds.CICE.unembed.3.bias', 'encoder.embed_engine.embeds.CICE.unembed.4.weight', 'encoder.embed_engine.embeds.CICE.unembed.4.bias', 'encoder.embed_engine.embeds.CICE.unembed.5.weight', 'encoder.embed_engine.embeds.CICE.unembed.5.bias', 'encoder.embed_engine.embeds.CICE.unembed.6.weight', 'encoder.embed_engine.embeds.CICE.unembed.6.bias', 'encoder.embed_engine.embeds.CICE.unembed.7.weight', 'encoder.embed_engine.embeds.CICE.unembed.7.bias', 'encoder.embed_engine.embeds.CICE.unembed.8.weight', 'encoder.embed_engine.embeds.CICE.unembed.8.bias', 'encoder.embed_engine.embeds.CICE.unembed.9.weight', 'encoder.embed_engine.embeds.CICE.unembed.9.bias', 'encoder.embed_engine.embeds.CICE.unembed.10.weight', 'encoder.embed_engine.embeds.CICE.unembed.10.bias', 'encoder.embed_engine.embeds.CICE.unembed.11.weight', 'encoder.embed_engine.embeds.CICE.unembed.11.bias', 'encoder.embed_engine.embeds.CICE.unembed.12.weight', 'encoder.embed_engine.embeds.CICE.unembed.12.bias', 'encoder.embed_engine.embeds.CICE.unembed.13.weight', 'encoder.embed_engine.embeds.CICE.unembed.13.bias', 'encoder.embed_engine.embeds.CICE.unembed.14.weight', 'encoder.embed_engine.embeds.CICE.unembed.14.bias', 'encoder.embed_engine.embeds.CICE.unembed.15.weight', 'encoder.embed_engine.embeds.CICE.unembed.15.bias', 'encoder.embed_engine.embeds.CICE.ln_final.0.weight', 'encoder.embed_engine.embeds.CICE.ln_final.0.bias', 'encoder.embed_engine.embeds.CICE.ln_final.1.weight', 'encoder.embed_engine.embeds.CICE.ln_final.1.bias', 'encoder.embed_engine.embeds.CICE.ln_final.2.weight', 'encoder.embed_engine.embeds.CICE.ln_final.2.bias', 'encoder.embed_engine.embeds.CICE.ln_final.3.weight', 'encoder.embed_engine.embeds.CICE.ln_final.3.bias', 'encoder.embed_engine.embeds.CICE.ln_final.4.weight', 'encoder.embed_engine.embeds.CICE.ln_final.4.bias', 'encoder.embed_engine.embeds.CICE.ln_final.5.weight', 'encoder.embed_engine.embeds.CICE.ln_final.5.bias', 'encoder.embed_engine.embeds.CICE.ln_final.6.weight', 'encoder.embed_engine.embeds.CICE.ln_final.6.bias', 'encoder.embed_engine.embeds.CICE.ln_final.7.weight', 'encoder.embed_engine.embeds.CICE.ln_final.7.bias', 'encoder.embed_engine.embeds.CICE.ln_final.8.weight', 'encoder.embed_engine.embeds.CICE.ln_final.8.bias', 'encoder.embed_engine.embeds.CICE.ln_final.9.weight', 'encoder.embed_engine.embeds.CICE.ln_final.9.bias', 'encoder.embed_engine.embeds.CICE.ln_final.10.weight', 'encoder.embed_engine.embeds.CICE.ln_final.10.bias', 'encoder.embed_engine.embeds.CICE.ln_final.11.weight', 'encoder.embed_engine.embeds.CICE.ln_final.11.bias', 'encoder.embed_engine.embeds.CICE.ln_final.12.weight', 'encoder.embed_engine.embeds.CICE.ln_final.12.bias', 'encoder.embed_engine.embeds.CICE.ln_final.13.weight', 'encoder.embed_engine.embeds.CICE.ln_final.13.bias', 'encoder.embed_engine.embeds.CICE.ln_final.14.weight', 'encoder.embed_engine.embeds.CICE.ln_final.14.bias', 'encoder.embed_engine.embeds.CICE.ln_final.15.weight', 'encoder.embed_engine.embeds.CICE.ln_final.15.bias', 'embed_target_coords.CICE.linear.weight', 'target_token_engines.CICE.tte.0.lnorm_in_q.embed_aux.0.weight', 'target_token_engines.CICE.tte.0.lnorm_in_q.embed_aux.0.bias', 'target_token_engines.CICE.tte.0.lnorm_in_q.embed_aux.2.weight', 'target_token_engines.CICE.tte.0.lnorm_in_q.embed_aux.2.bias', 'target_token_engines.CICE.tte.0.proj_heads_q.weight', 'target_token_engines.CICE.tte.0.proj_heads_k.weight', 'target_token_engines.CICE.tte.0.proj_heads_v.weight', 'target_token_engines.CICE.tte.0.proj_out.weight', 'target_token_engines.CICE.tte.1.lnorm.embed_aux.0.weight', 'target_token_engines.CICE.tte.1.lnorm.embed_aux.0.bias', 'target_token_engines.CICE.tte.1.lnorm.embed_aux.2.weight', 'target_token_engines.CICE.tte.1.lnorm.embed_aux.2.bias', 'target_token_engines.CICE.tte.1.proj_heads_q.weight', 'target_token_engines.CICE.tte.1.proj_heads_k.weight', 'target_token_engines.CICE.tte.1.proj_heads_v.weight', 'target_token_engines.CICE.tte.1.proj_out.weight', 'target_token_engines.CICE.tte.2.layers.0.embed_aux.0.weight', 'target_token_engines.CICE.tte.2.layers.0.embed_aux.0.bias', 'target_token_engines.CICE.tte.2.layers.0.embed_aux.2.weight', 'target_token_engines.CICE.tte.2.layers.0.embed_aux.2.bias', 'target_token_engines.CICE.tte.2.layers.1.weight', 'target_token_engines.CICE.tte.2.layers.1.bias', 'target_token_engines.CICE.tte.2.layers.4.weight', 'target_token_engines.CICE.tte.2.layers.4.bias', 'target_token_engines.CICE.tte.3.lnorm_in_q.embed_aux.0.weight', 'target_token_engines.CICE.tte.3.lnorm_in_q.embed_aux.0.bias', 'target_token_engines.CICE.tte.3.lnorm_in_q.embed_aux.2.weight', 'target_token_engines.CICE.tte.3.lnorm_in_q.embed_aux.2.bias', 'target_token_engines.CICE.tte.3.proj_heads_q.weight', 'target_token_engines.CICE.tte.3.proj_heads_k.weight', 'target_token_engines.CICE.tte.3.proj_heads_v.weight', 'target_token_engines.CICE.tte.3.proj_out.weight', 'target_token_engines.CICE.tte.4.lnorm.embed_aux.0.weight', 'target_token_engines.CICE.tte.4.lnorm.embed_aux.0.bias', 'target_token_engines.CICE.tte.4.lnorm.embed_aux.2.weight', 'target_token_engines.CICE.tte.4.lnorm.embed_aux.2.bias', 'target_token_engines.CICE.tte.4.proj_heads_q.weight', 'target_token_engines.CICE.tte.4.proj_heads_k.weight', 'target_token_engines.CICE.tte.4.proj_heads_v.weight', 'target_token_engines.CICE.tte.4.proj_out.weight', 'target_token_engines.CICE.tte.5.layers.0.embed_aux.0.weight', 'target_token_engines.CICE.tte.5.layers.0.embed_aux.0.bias', 'target_token_engines.CICE.tte.5.layers.0.embed_aux.2.weight', 'target_token_engines.CICE.tte.5.layers.0.embed_aux.2.bias', 'target_token_engines.CICE.tte.5.layers.1.weight', 'target_token_engines.CICE.tte.5.layers.1.bias', 'target_token_engines.CICE.tte.5.layers.4.weight', 'target_token_engines.CICE.tte.5.layers.4.bias', 'pred_heads.CICE.pred_heads.0.0.weight', 'pred_heads.CICE.pred_heads.0.0.bias']
+-----------------
+Total number of trainable parameters: 6,329,720
+Number of parameters:
+  Embedding networks:
+    CICE : 1,330,944
+    ERA5 : 0
+    CGLORS-OCEAN : 0
+    CGLORS-OCEAN-2-300m : 0
+    CGLORS-OCEAN-370-5000m : 0
+ Local assimilation engine: 0
+ Local-global adapter: 0
+ Learnable queries: 0
+ Query Aggregation engine: 0
+ Global assimilation engine: 0
+ Latent prediction heads and pre-norm: 0
+ Forecast engine: 0
+ coordinate embedding, prediction networks and prediction heads:
+   CICE : 26,880 / 4,969,840 / 2,056
+   ERA5 : 0 / 0 / 0
+   CGLORS-OCEAN : 0 / 0 / 0
+   CGLORS-OCEAN-2-300m : 0 / 0 / 0
+   CGLORS-OCEAN-370-5000m : 0 / 0 / 0
+-----------------
+('cf.lr_steps_warmup and cf.lr_steps_cooldown', ' were larger than cf.lr_steps=32', '. The value have been adjusted to lr_steps_warmup=3 and ', ' lr_steps_cooldown=1 so steps_decay=28.')
+latent_noise_kl_weight : 0.0
+latent_noise_gamma : 2.0
+latent_noise_use_additive_noise : False
+latent_noise_deterministic_latents : True
+latent_noise_saturate_encodings : 5
+embed_unembed_mode : block
+embed_dropout_rate : 0.1
+ae_local_dim_embed : 1024
+ae_local_num_blocks : 2
+ae_local_num_heads : 16
+ae_local_dropout_rate : 0.1
+ae_local_with_qk_lnorm : True
+ae_local_num_queries : 1
+ae_local_queries_per_cell : False
+ae_adapter_num_heads : 16
+ae_adapter_embed : 128
+ae_adapter_with_qk_lnorm : True
+ae_adapter_with_residual : True
+ae_adapter_dropout_rate : 0.1
+ae_global_dim_embed : 2048
+ae_global_num_blocks : 2
+ae_global_num_heads : 32
+ae_global_dropout_rate : 0.1
+ae_global_with_qk_lnorm : True
+ae_global_att_dense_rate : 1.0
+ae_global_block_factor : 64
+ae_global_mlp_hidden_factor : 2
+ae_global_trailing_layer_norm : False
+ae_aggregation_num_blocks : 0
+ae_aggregation_num_heads : 32
+ae_aggregation_dropout_rate : 0.1
+ae_aggregation_with_qk_lnorm : True
+ae_aggregation_att_dense_rate : 1.0
+ae_aggregation_block_factor : 64
+ae_aggregation_mlp_hidden_factor : 2
+decoder_type : PerceiverIOCoordConditioning
+pred_adapter_kv : False
+pred_self_attention : True
+pred_dyadic_dims : False
+pred_mlp_adaln : True
+fe_num_blocks : 6
+fe_num_heads : 16
+fe_dropout_rate : 0.1
+fe_with_qk_lnorm : True
+fe_layer_norm_after_blocks : []
+fe_impute_latent_noise_std : 0.0
+forecast_att_dense_rate : 1.0
+num_class_tokens : 0
+num_register_tokens : 0
+healpix_level : 5
+rope_2D : False
+with_mixed_precision : True
+with_flash_attention : True
+compile_model : False
+with_fsdp : True
+attention_dtype : bf16
+mixed_precision_dtype : bf16
+mlp_norm_eps : 1e-05
+norm_eps : 0.0001
+freeze_modules : .*global.*|.*local.*|.*adapter.*|.*q_cells.*|.*latent_heads.*|.*latent_pre_norm.*|.*interpolator_latents.*|.*fe.*|.*ERA5.*|.*OCEAN.*
+load_chkpt : {}
+norm_type : LayerNorm
+qk_norm_type : None
+streams_directory : ../WeatherGenerator-configs/config/streams/earthgen3_cice/
+  type : grep  filenames : ['/e/scratch/weatherai/broccoli1/cice_cglorsv8_1993_2023_subset.zarr']  stream_id : 4  zero_as_nan : False  domain : {'lat_min': 45.0, 'lat_max': 90.0}  source : ['aice', 'hi', 'hs', 'strength', 'sig1', 'sig2', 'uvel', 'vvel']  target : ['aice', 'hi', 'hs', 'strength', 'sig1', 'sig2', 'uvel', 'vvel']  stats_override : {'aice': [0.38677, 0.45656], 'hi': [0.716027, 1.01352], 'hs': [0.0311995, 0.0618096], 'strength': [9683.85, 19886.7], 'sig1': [-0.215904, 0.19174], 'sig2': [-0.489426, 0.206826], 'uvel': [-0.00161477, 0.0701565], 'vvel': [-0.00829278, 0.0745611]}  masking_override : {'randomly_drop_as_source_rate': 0.5}  loss_weight : 1.0  token_size : 32  max_num_targets : -1  embed : {'net': 'transformer', 'num_tokens': 1, 'num_heads': 8, 'dim_embed': 256, 'num_blocks': 2}  embed_target_coords : {'net': 'linear', 'dim_embed': 256}  target_readout : {'num_layers': 2, 'num_heads': 4}  pred_head : {'ens_size': 1, 'num_layers': 1}  name : CICE  data_paths : ['/e/data1/slmet/ml_training', '/p/project1/hclimrep/koldunovn1', '/p/scratch/hclimrep/shared/weather_generator_data/icon_art']  train_source_channels : ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel']  train_target_channels : ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel']  target_channel_weights : [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  val_source_channels : ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel']  val_target_channels : ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel']  type : anemoi  filenames : ['aifs-ea-an-oper-0001-mars-o96-1979-2024-1h-v3-with-era51.zarr']  stream_id : 0  source : ['10u', '10v', '2d', '2t', 'sp', 'tp']  target : []  geoinfo_channels : ['z', 'lsm', 'slor', 'sdor', 'insolation', 'cos_local_time', 'sin_local_time', 'cos_julian_day', 'sin_julian_day']  loss_weight : 1.0  location_weight : cosine_latitude  token_size : 8  tokenize_spacetime : True  max_num_targets : -1  frequency : 06:00:00  embed : {'net': 'transformer', 'num_tokens': 1, 'num_heads': 8, 'dim_embed': 256, 'num_blocks': 2}  embed_target_coords : {'net': 'linear', 'dim_embed': 256}  target_readout : {'num_layers': 2, 'num_heads': 4}  pred_head : {'ens_size': 1, 'num_layers': 1}  name : ERA5  data_paths : ['/e/data1/slmet/ml_training', '/p/project1/hclimrep/koldunovn1', '/p/scratch/hclimrep/shared/weather_generator_data/icon_art']  train_source_channels : ['10u', '10v', '2d', '2t', 'sp', 'tp']  train_target_channels : []  target_channel_weights : []  val_source_channels : ['10u', '10v', '2d', '2t', 'sp', 'tp']  val_target_channels : []  type : grep  filenames : ['nemo_cglorsv8_subset_1993_2023.zarr']  stream_id : 1  source : ['thetao_0.5', 'so_0.5', 'uo_0.5', 'vo_0.5', 'zos']  target : ['thetao_0.5', 'so_0.5', 'uo_0.5', 'vo_0.5', 'zos']  loss_weight : 1.0  location_weight : cosine_latitude  token_size : 32  max_num_targets : -1  embed : {'net': 'transformer', 'num_tokens': 1, 'num_heads': 8, 'dim_embed': 256, 'num_blocks': 2}  embed_target_coords : {'net': 'linear', 'dim_embed': 256}  target_readout : {'num_layers': 2, 'num_heads': 4}  pred_head : {'ens_size': 1, 'num_layers': 1}  name : CGLORS-OCEAN  data_paths : ['/e/data1/slmet/ml_training', '/p/project1/hclimrep/koldunovn1', '/p/scratch/hclimrep/shared/weather_generator_data/icon_art']  train_source_channels : ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos']  train_target_channels : ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos']  target_channel_weights : [1.0, 1.0, 1.0, 1.0, 1.0]  val_source_channels : ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos']  val_target_channels : ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos']  type : grep  filenames : ['nemo_cglorsv8_subset_1993_2023.zarr']  stream_id : 2  source : ['mldr10_1', 'thetao_5.1', 'so_5.1', 'uo_5.1', 'vo_5.1', 'thetao_16.5', 'so_16.5', 'uo_16.5', 'vo_16.5', 'thetao_30.9', 'so_30.9', 'uo_30.9', 'vo_30.9', 'thetao_53.9', 'so_53.9', 'uo_53.9', 'vo_53.9', 'thetao_86.9', 'so_86.9', 'uo_86.9', 'vo_86.9', 'thetao_133.1', 'so_133.1', 'uo_133.1', 'vo_133.1', 'thetao_199.8', 'so_199.8', 'uo_199.8', 'vo_199.8', 'thetao_300.9', 'so_300.9', 'uo_300.9', 'vo_300.9']  target : ['mldr10_1', 'thetao_5.1', 'so_5.1', 'uo_5.1', 'vo_5.1', 'thetao_16.5', 'so_16.5', 'uo_16.5', 'vo_16.5', 'thetao_30.9', 'so_30.9', 'uo_30.9', 'vo_30.9', 'thetao_53.9', 'so_53.9', 'uo_53.9', 'vo_53.9', 'thetao_86.9', 'so_86.9', 'uo_86.9', 'vo_86.9', 'thetao_133.1', 'so_133.1', 'uo_133.1', 'vo_133.1', 'thetao_199.8', 'so_199.8', 'uo_199.8', 'vo_199.8', 'thetao_300.9', 'so_300.9', 'uo_300.9', 'vo_300.9']  loss_weight : 1.0  location_weight : cosine_latitude  token_size : 128  max_num_targets : 500000  embed : {'net': 'transformer', 'num_tokens': 1, 'num_heads': 8, 'dim_embed': 256, 'num_blocks': 2}  embed_target_coords : {'net': 'linear', 'dim_embed': 256}  target_readout : {'num_layers': 2, 'num_heads': 4}  pred_head : {'ens_size': 1, 'num_layers': 1}  name : CGLORS-OCEAN-2-300m  data_paths : ['/e/data1/slmet/ml_training', '/p/project1/hclimrep/koldunovn1', '/p/scratch/hclimrep/shared/weather_generator_data/icon_art']  train_source_channels : ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9']  train_target_channels : ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9']  target_channel_weights : [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  val_source_channels : ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9']  val_target_channels : ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9']  type : grep  filenames : ['nemo_cglorsv8_subset_1993_2023.zarr']  stream_id : 3  source : ['thetao_370.7', 'so_370.7', 'uo_370.7', 'vo_370.7', 'thetao_565.3', 'so_565.3', 'uo_565.3', 'vo_565.3', 'thetao_856.7', 'so_856.7', 'uo_856.7', 'vo_856.7', 'thetao_1265.9', 'so_1265.9', 'uo_1265.9', 'vo_1265.9', 'thetao_2776.0', 'so_2776.0', 'uo_2776.0', 'vo_2776.0', 'thetao_3513.4', 'so_3513.4', 'uo_3513.4', 'vo_3513.4', 'thetao_5089.5', 'so_5089.5', 'uo_5089.5', 'vo_5089.5']  target : ['thetao_370.7', 'so_370.7', 'uo_370.7', 'vo_370.7', 'thetao_565.3', 'so_565.3', 'uo_565.3', 'vo_565.3', 'thetao_856.7', 'so_856.7', 'uo_856.7', 'vo_856.7', 'thetao_1265.9', 'so_1265.9', 'uo_1265.9', 'vo_1265.9', 'thetao_2776.0', 'so_2776.0', 'uo_2776.0', 'vo_2776.0', 'thetao_3513.4', 'so_3513.4', 'uo_3513.4', 'vo_3513.4', 'thetao_5089.5', 'so_5089.5', 'uo_5089.5', 'vo_5089.5']  loss_weight : 1.0  location_weight : cosine_latitude  token_size : 128  max_num_targets : 400000  embed : {'net': 'transformer', 'num_tokens': 1, 'num_heads': 8, 'dim_embed': 256, 'num_blocks': 2}  embed_target_coords : {'net': 'linear', 'dim_embed': 256}  target_readout : {'num_layers': 2, 'num_heads': 4}  pred_head : {'ens_size': 1, 'num_layers': 1}  name : CGLORS-OCEAN-370-5000m  data_paths : ['/e/data1/slmet/ml_training', '/p/project1/hclimrep/koldunovn1', '/p/scratch/hclimrep/shared/weather_generator_data/icon_art']  train_source_channels : ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5']  train_target_channels : ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5']  target_channel_weights : [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  val_source_channels : ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5']  val_target_channels : ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5']zarr_store : zip
+general : {'istep': 0, 'rank': '???', 'world_size': '???', 'multiprocessing_method': 'fork', 'desc': '', 'run_id': 'ft_cice_smoke', 'run_history': [['tdh7lcva', 3348], ['re1pmyiq', 13540], ['pojzivg1', 21484], ['jrvsa4g2', 32424], ['gosyvlqt', 33024], ['t7ei1x8w', 43864], ['gxijfo5a', 44764], ['xlf81rky', 52308], ['re59cdk8', 57204], ['gr3jugd6', 65348], ['atj45a3d', 0], ['whh7c9zp', 1224], ['whh7c9zp', 2192], ['whh7c9zp', 3416], ['whh7c9zp', 4640], ['ku1ujpw9', 5864], ['ku1ujpw9', 7088], ['ku1ujpw9', 0], ['d5xirkmf', 1224], ['d5xirkmf', 2448], ['d5xirkmf', 3672], ['d5xirkmf', 4896], ['d5xirkmf', 6120], ['d5xirkmf', 7344], ['d5xirkmf', 0]]}
+train_logging : {'terminal': 10, 'metrics': 20, 'checkpoint': 100, 'log_grad_norms': False}
+data_loading : {'num_workers': 16, 'rng_seed': 1782469231, 'repeat_data_in_mini_epoch': False, 'memory_pinning': True}
+training_config : {'training_mode': ['masking'], 'num_mini_epochs': 1, 'samples_per_mini_epoch': 32, 'shuffle': True, 'start_date': '1994-01-01T00:00', 'end_date': '2022-12-31T00:00', 'time_window_step': 86400, 'time_window_len': 86400, 'learning_rate_scheduling': {'lr_start': 1e-06, 'lr_max': 0.0001, 'lr_final_decay': 2e-06, 'lr_final': 0.0, 'num_steps_warmup': 256, 'num_steps_cooldown': 512, 'policy_warmup': 'cosine', 'policy_decay': 'cosine', 'policy_cooldown': 'linear', 'parallel_scaling_policy': 'sqrt'}, 'optimizer': {'grad_clip': 1.0, 'weight_decay': 0.1, 'log_grad_norms': False, 'adamw': {'beta1': 0.975, 'beta2': 0.9875, 'eps': 2e-08}}, 'losses': {'physical': {'type': 'LossPhysical', 'loss_fcts': {'mse': {}}}}, 'model_input': {'forecasting': {'masking_strategy': 'forecast'}}, 'forecast': {'time_step': 86400, 'num_steps': 3, 'offset': 1, 'policy': 'fixed'}}
+validation_config : {'samples_per_mini_epoch': 8, 'shuffle': False, 'start_date': '2023-01-01T00:00', 'end_date': '2023-12-31T00:00', 'validate_with_ema': {'enabled': True, 'ema_ramp_up_ratio': 0.09, 'ema_halflife_in_thousands': 0.001}, 'output': {'num_samples': 0, 'normalized_samples': False, 'streams': None}, 'validate_before_training': False, 'time_window_step': 86400, 'time_window_len': 86400}
+wgtags : {'org': None, 'issue': None, 'exp': None, 'grid': None}
+from_run_id : d5xirkmf
+data_path_anemoi : /e/data1/slmet/ml_training
+data_path_obs : /e/data1/slmet/ml_training
+data_path_eobs : /e/data1/slmet/ml_training
+data_path_aux : /e/scratch/weatherai/shared_work/assets/
+path_shared_working_dir : /e/scratch/weatherai/shared_work
+path_shared_slurm_dir : /e/scratch/weatherai/slurm/
+data_path_fesom : /p/project1/hclimrep/koldunovn1
+data_path_icon : /p/scratch/hclimrep/shared/weather_generator_data/icon_art
+data_paths : ['/e/data1/slmet/ml_training', '/p/project1/hclimrep/koldunovn1', '/p/scratch/hclimrep/shared/weather_generator_data/icon_art']
+mlflow : {'tracking_uri': 'https://dbc-080c3210-c159.cloud.databricks.com/'}
+world_size : 1
+rank : 0
+local_rank : 0
+with_ddp : False
+world_size_original : 2
+
+Mini_epoch 0 of 1: train.
+Set block StreamEmbedder_ERA5 to eval mode
+Set block StreamEmbedder_CGLORS-OCEAN to eval mode
+Set block StreamEmbedder_CGLORS-OCEAN-2-300m to eval mode
+Set block StreamEmbedder_CGLORS-OCEAN-370-5000m to eval mode
+Set block embed_target_coords_CGLORS-OCEAN to eval mode
+Set block embed_target_coords_CGLORS-OCEAN-2-300m to eval mode
+Set block embed_target_coords_CGLORS-OCEAN-370-5000m to eval mode
+Set block TargetPredictionEngine_CGLORS-OCEAN to eval mode
+Set block TargetPredictionEngine_CGLORS-OCEAN-2-300m to eval mode
+Set block TargetPredictionEngine_CGLORS-OCEAN-370-5000m to eval mode
+Set block EnsPredictionHead_CGLORS-OCEAN to eval mode
+Set block EnsPredictionHead_CGLORS-OCEAN-2-300m to eval mode
+Set block EnsPredictionHead_CGLORS-OCEAN-370-5000m to eval mode
+0::0 : dataset [0,32) : [0,2)
+iter_start=0, iter_end=2, len=32
+0::1 : dataset [0,32) : [2,4)
+iter_start=2, iter_end=4, len=32
+0::2 : dataset [0,32) : [4,6)
+iter_start=4, iter_end=6, len=32
+0::3 : dataset [0,32) : [6,8)
+forecast_steps : 3
+forecast_steps : 3
+iter_start=6, iter_end=8, len=32
+0::4 : dataset [0,32) : [8,10)
+Sufficient available samples in the time range specified
+Sufficient available samples in the time range specified
+forecast_steps : 3
+iter_start=8, iter_end=10, len=32
+0::5 : dataset [0,32) : [10,12)
+Sufficient available samples in the time range specified
+forecast_steps : 3
+iter_start=10, iter_end=12, len=32
+0::6 : dataset [0,32) : [12,14)
+Sufficient available samples in the time range specified
+forecast_steps : 3
+iter_start=12, iter_end=14, len=32
+0::7 : dataset [0,32) : [14,16)
+Sufficient available samples in the time range specified
+forecast_steps : 3
+iter_start=14, iter_end=16, len=32
+Sufficient available samples in the time range specified
+0::8 : dataset [0,32) : [16,18)
+forecast_steps : 3
+iter_start=16, iter_end=18, len=32
+0::9 : dataset [0,32) : [18,20)
+Sufficient available samples in the time range specified
+forecast_steps : 3
+iter_start=18, iter_end=20, len=32
+Sufficient available samples in the time range specified
+0::10 : dataset [0,32) : [20,22)
+forecast_steps : 3
+iter_start=20, iter_end=22, len=32
+0::11 : dataset [0,32) : [22,24)
+Sufficient available samples in the time range specified
+forecast_steps : 3
+Sufficient available samples in the time range specified
+iter_start=22, iter_end=24, len=32
+0::12 : dataset [0,32) : [24,26)
+iter_start=24, iter_end=26, len=32
+forecast_steps : 3
+0::13 : dataset [0,32) : [26,28)
+Sufficient available samples in the time range specified
+forecast_steps : 3
+iter_start=26, iter_end=28, len=32
+0::14 : dataset [0,32) : [28,30)
+Sufficient available samples in the time range specified
+forecast_steps : 3
+iter_start=28, iter_end=30, len=32
+Sufficient available samples in the time range specified
+forecast_steps : 3
+Sufficient available samples in the time range specified
+forecast_steps : 3
+Sufficient available samples in the time range specified
+0::15 : dataset [0,32) : [30,32)
+iter_start=30, iter_end=32, len=32
+forecast_steps : 3
+Sufficient available samples in the time range specified
+Switching lr scheduler to 'cosine' at step = 3.
+000 : 00010/00032 : 000010 : loss = 2.5404E-01 (lr=7.82E-05, s/sec=0.084)
+	
+LossPhysical.CICE.mse.avg : 9.1864E-01 	
+LossPhysical.CGLORS-OCEAN.mse.avg : 2.5548E-02 	
+LossPhysical.CGLORS-OCEAN-2-300m.mse.avg : 3.2563E-02 	
+LossPhysical.CGLORS-OCEAN-370-5000m.mse.avg : 3.9397E-02 	
+LossPhysical.loss_avg : 2.5404E-01 	
+
+
+000 : 00020/00032 : 000020 : loss = 2.0532E-01 (lr=2.69E-05, s/sec=0.169)
+	
+LossPhysical.CICE.mse.avg : 7.2236E-01 	
+LossPhysical.CGLORS-OCEAN.mse.avg : 2.5527E-02 	
+LossPhysical.CGLORS-OCEAN-2-300m.mse.avg : 3.3140E-02 	
+LossPhysical.CGLORS-OCEAN-370-5000m.mse.avg : 4.0263E-02 	
+LossPhysical.loss_avg : 2.0532E-01 	
+
+
+000 : 00030/00032 : 000030 : loss = 1.7743E-01 (lr=5.00E-07, s/sec=0.358)
+	
+LossPhysical.CICE.mse.avg : 6.1033E-01 	
+LossPhysical.CGLORS-OCEAN.mse.avg : 2.6081E-02 	
+LossPhysical.CGLORS-OCEAN-2-300m.mse.avg : 3.3097E-02 	
+LossPhysical.CGLORS-OCEAN-370-5000m.mse.avg : 4.0215E-02 	
+LossPhysical.loss_avg : 1.7743E-01 	
+
+
+Switching lr scheduler to 'linear' at step = 31.
+Mini_epoch 0 of 1: validate.
+0::0 : dataset [0,8) : [0,0)
+iter_start=0, iter_end=0, len=8
+0::1 : dataset [0,8) : [0,0)
+iter_start=0, iter_end=0, len=8
+0::2 : dataset [0,8) : [0,0)
+iter_start=0, iter_end=0, len=8
+forecast_steps : 3
+0::3 : dataset [0,8) : [0,0)
+forecast_steps : 3
+Sufficient available samples in the time range specified
+iter_start=0, iter_end=0, len=8
+Sufficient available samples in the time range specified
+0::4 : dataset [0,8) : [0,0)
+forecast_steps : 3
+0::5 : dataset [0,8) : [0,0)
+0::6 : dataset [0,8) : [0,0)
+0::7 : dataset [0,8) : [0,0)
+0::8 : dataset [0,8) : [0,0)
+0::9 : dataset [0,8) : [0,0)
+0::10 : dataset [0,8) : [0,0)
+0::11 : dataset [0,8) : [0,0)
+0::12 : dataset [0,8) : [0,0)
+0::13 : dataset [0,8) : [0,0)
+0::14 : dataset [0,8) : [0,0)
+  0%|          | 0/8 [00:00<?, ?it/s]0::15 : dataset [0,8) : [0,8)
+iter_start=0, iter_end=0, len=8
+Sufficient available samples in the time range specified
+iter_start=0, iter_end=0, len=8
+iter_start=0, iter_end=0, len=8
+iter_start=0, iter_end=0, len=8
+forecast_steps : 3
+iter_start=0, iter_end=0, len=8
+iter_start=0, iter_end=0, len=8
+iter_start=0, iter_end=0, len=8
+Sufficient available samples in the time range specified
+iter_start=0, iter_end=0, len=8
+forecast_steps : 3
+iter_start=0, iter_end=0, len=8
+iter_start=0, iter_end=0, len=8
+forecast_steps : 3
+iter_start=0, iter_end=0, len=8
+iter_start=0, iter_end=8, len=8
+forecast_steps : 3
+forecast_steps : 3
+Sufficient available samples in the time range specified
+forecast_steps : 3
+Sufficient available samples in the time range specified
+forecast_steps : 3
+Sufficient available samples in the time range specified
+Sufficient available samples in the time range specified
+forecast_steps : 3
+Sufficient available samples in the time range specified
+forecast_steps : 3
+forecast_steps : 3
+Sufficient available samples in the time range specified
+forecast_steps : 3
+forecast_steps : 3
+Sufficient available samples in the time range specified
+Sufficient available samples in the time range specified
+Sufficient available samples in the time range specified
+forecast_steps : 3
+Sufficient available samples in the time range specified
+Sufficient available samples in the time range specified
+Sufficient available samples in the time range specified
+ 12%|█▎        | 1/8 [01:03<07:26, 63.81s/it] 25%|██▌       | 2/8 [02:06<06:17, 62.89s/it] 38%|███▊      | 3/8 [03:03<05:02, 60.49s/it] 50%|█████     | 4/8 [04:06<04:05, 61.40s/it] 62%|██████▎   | 5/8 [05:02<02:58, 59.59s/it] 75%|███████▌  | 6/8 [06:00<01:57, 58.80s/it] 88%|████████▊ | 7/8 [06:56<00:58, 58.02s/it]100%|██████████| 8/8 [07:54<00:00, 58.05s/it]validation (ft_cice_smoke) : 000 : 
+                        0.15835644491016865
+LossPhysical.CICE.mse.avg : 4.8317E-01 	
+LossPhysical.CGLORS-OCEAN.mse.avg : 4.5977E-02 	
+LossPhysical.CGLORS-OCEAN-2-300m.mse.avg : 5.0468E-02 	
+LossPhysical.CGLORS-OCEAN-370-5000m.mse.avg : 5.3811E-02 	
+LossPhysical.loss_avg : 1.5836E-01 	
+
+
+100%|██████████| 8/8 [07:54<00:00, 59.35s/it]
+Mini_epoch 0 of 1: save_model.
+Saved model to /e/scratch/weatherai/shared_work/models/ft_cice_smoke/ft_cice_smoke_chkpt00000.chkpt
+Saved model to /e/scratch/weatherai/shared_work/models/ft_cice_smoke/ft_cice_smoke_chkpt00001.chkpt

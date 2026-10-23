@@ -209,6 +209,20 @@ def load_grid(grid_zarr: pathlib.Path):
     raise KeyError(f"No nav_lat/nav_lon, TLAT/TLON or latitude/longitude in {grid_zarr}")
 
 
+def forecast_reference_time(store, sample, stream, valid_time):
+    """
+    Forecast reference time t0 = latest time of the model input (source at fstep 0).
+    The `source_interval.end` attribute of a target group is the END of the input window,
+    which is exclusive (t0 + 1 window): not t0. Fallback: one step before the first valid time.
+    """
+    src = store.dataset(sample, stream, 0, "source")
+    if src is not None and len(src["times"]):
+        return np.datetime64(src["times"].max(), "ns")
+    if len(valid_time) >= 2:
+        return valid_time[0] - (valid_time[1] - valid_time[0])
+    return None
+
+
 def convert_one(store, sample, stream, kinds, channels_sel, fsteps_sel, grid, out_path):
     import xarray as xr  # noqa: PLC0415
 
@@ -262,7 +276,7 @@ def convert_one(store, sample, stream, kinds, channels_sel, fsteps_sel, grid, ou
     valid_time = np.array(
         [per_step[f][ref_kind]["times"].max() for f in steps], dtype="datetime64[ns]"
     )
-    ref_time = per_step[steps[0]][ref_kind]["ref_time"]
+    ref_time = forecast_reference_time(store, sample, stream, valid_time)
     lead_h = ((valid_time - ref_time) / np.timedelta64(1, "h")).astype(np.float32)
 
     data_vars = {}

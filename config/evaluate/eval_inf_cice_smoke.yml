@@ -1,0 +1,41 @@
+# FastEval for the sea-ice model. inf_cice_smoke / /e/scratch/weatherai/shared_work are replaced by run_cice_pipeline.sh
+# (or by hand). Region "arctic" of FastEval = 50-90N (our stream domain starts at 45N).
+evaluation:
+  metrics:
+  - rmse
+  score_plots: [lead_time]
+  summary_dir: "/e/scratch/weatherai/shared_work/results/inf_cice_smoke/plots"
+  print_summary: false
+  log_scale: false
+  add_grid: false
+
+run_ids:
+    inf_cice_smoke:
+        label: "d5xirkmf + CICE arctic"
+        results_base_dir: "/e/scratch/weatherai/shared_work/results/inf_cice_smoke/"
+        rank: "all"
+        streams:
+            CICE:
+              persistence: true                 # persistence is THE baseline for sea ice
+              regions: ["arctic"]
+              channels: ["aice", "hi", "hs", "uvel", "vvel"]
+              evaluation:
+                forecast_step: "all"
+                sample: "all"
+                ensemble: "all"
+              plotting:
+                sample: [0]
+                forecast_step: [1, 4, 7]
+                data_plots:
+                  - maps:
+                      predictions: [image]
+                      target: [image]
+                      bias: [image]
+            CGLORS-OCEAN:                       # the ocean must not degrade vs d5xirkmf
+              persistence: true
+              regions: ["global", "arctic"]
+              channels: ["thetao_0.5", "so_0.5", "uo_0.5", "vo_0.5", "zos"]
+              evaluation:
+                forecast_step: "all"
+                sample: "all"
+                ensemble: "all"

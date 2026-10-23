@@ -38,6 +38,12 @@ from weathergen.model.engines import (
     TargetPredictionEngineClassic,
 )
 from weathergen.model import flow_matching as fmatch
+from weathergen.model.decoder_neighbourhood import (
+    DecoderGeometry,
+    RelativePositionBias,
+    get_decoder_neighbourhood_config,
+    uses_neighbourhood,
+)
 from weathergen.model.flow_matching import FlowMatchingConditioner, get_flow_matching_config
 from weathergen.model.forcing_injection import ForcingInjection, get_forcing_reinjection_config
 from weathergen.model.layers import MLP, NamedLinear
@@ -157,6 +163,12 @@ class ModelParams(torch.nn.Module):
 
         self.q_cells_lens = torch.nn.Parameter(
             torch.ones(self.num_healpix_cells + 1, dtype=torch.int32), requires_grad=False
+        )
+
+        # decoder neighbourhood geometry (None = disabled; non-persistent buffers)
+        dn = get_decoder_neighbourhood_config(cf)
+        self.dec_geometry = (
+            DecoderGeometry(self.healpix_level, dn["rings"]) if dn["enabled"] else None
         )
         self.q_cells_lens.data[0] = 0
 
@@ -336,6 +348,8 @@ class Model(torch.nn.Module):
         self.fm_cfg = get_flow_matching_config(cf)
         self.fm_conditioners: nn.ModuleDict | None = None
         self.fm_sampling = False
+        # relative-position bias / wider neighbourhood in the decoders (disabled by default)
+        self.dn_cfg = get_decoder_neighbourhood_config(cf)
         self.pred_heads = None
         self.q_cells: torch.Tensor | None = None
         self.streams: dict[str, typing.Any] = cf.streams
@@ -558,6 +572,19 @@ class Model(torch.nn.Module):
                         stream_name=stream_name,
                     )
 
+        if self.dn_cfg["enabled"]:
+            assert cf.decoder_type == "PerceiverIOCoordConditioning", (
+                "decoder_neighbourhood is implemented for decoder_type PerceiverIOCoordConditioning"
+            )
+            tte_names = list(self.target_token_engines.keys())
+            dn_streams = [n for n in tte_names if uses_neighbourhood(self.dn_cfg, n)]
+            assert dn_streams, f"decoder_neighbourhood: no decoder among {self.dn_cfg['streams']}"
+            if is_root():
+                logger.info(
+                    f"Decoder neighbourhood for {dn_streams}: rings={self.dn_cfg['rings']}, "
+                    f"relative-position bias hidden={self.dn_cfg['hidden']}"
+                )
+
         # flow-matching conditioning of the decoders of the selected streams
         if self.fm_cfg["enabled"]:
             assert cf.decoder_type != "Linear", "flow matching needs a target prediction engine"
@@ -628,7 +655,8 @@ class Model(torch.nn.Module):
     def reset_parameters(self):
         def _reset_params(module):
             reset_types = AdaLayerNorm | nn.Linear | nn.LayerNorm
-            if isinstance(module, reset_types | ForcingInjection | FlowMatchingConditioner):
+            new_types = ForcingInjection | FlowMatchingConditioner | RelativePositionBias
+            if isinstance(module, reset_types | new_types):
                 module.reset_parameters()
             else:
                 pass
@@ -664,6 +692,9 @@ class Model(torch.nn.Module):
         )
         num_params_fm = (
             get_num_parameters(self.fm_conditioners) if self.fm_conditioners is not None else 0
+        )
+        num_params_dn = sum(
+            get_num_parameters(m) for m in self.modules() if isinstance(m, RelativePositionBias)
         )
 
         mdict = self.embed_target_coords
@@ -701,6 +732,8 @@ class Model(torch.nn.Module):
             print(f" Forcing re-injection: {num_params_fi:,}")
         if self.fm_conditioners is not None:
             print(f" Flow-matching conditioning: {num_params_fm:,}")
+        if self.dn_cfg["enabled"]:
+            print(f" Decoder relative-position bias: {num_params_dn:,}")
         print(" coordinate embedding, prediction networks and prediction heads:")
         zps = zip(
             self.streams.keys(),
@@ -926,6 +959,21 @@ class Model(torch.nn.Module):
         )
         tokens_nbors_lens[0] = 0
 
+        # decoder neighbourhood: K slot cells per cell (9 or 25) and the slot of every key token
+        geo = model_params.dec_geometry if self.dn_cfg["enabled"] else None
+        if geo is not None:
+            k_slots, n_q = geo.num_slots, self.cf.ae_local_num_queries
+            if k_slots == 9:  # rings 1: same cells, same order as hp_nbours
+                tokens_nbors_dn, tokens_nbors_dn_lens = tokens_nbors, tokens_nbors_lens
+            else:
+                idxs_dn = geo.nbours.unsqueeze(0).repeat((batch_size, 1, 1)).flatten(0, 1)
+                tokens_nbors_dn = tokens.reshape(s).flatten(0, 1)[idxs_dn.flatten()].flatten(0, 1)
+                tokens_nbors_dn_lens = torch.full(
+                    (s[0] * s[1] + 1,), k_slots * n_q, dtype=torch.int32, device=tokens.device
+                )
+                tokens_nbors_dn_lens[0] = 0
+            k_onehot = geo.key_slots_onehot(s[0] * s[1], n_q, tokens.device, torch.float32)
+
         # pair with tokens from assimilation engine to obtain target tokens
         for stream_name in self.streams.keys():
             # extract target coords for current stream and fstep and convert to one tensor
@@ -975,13 +1023,31 @@ class Model(torch.nn.Module):
                     ).unsqueeze(0)  # add ensemble dim: shape is then [1, preds_per_coord, channels]
                 else:
 
-                    def decode(queries, stream_name=stream_name, tcs_lens=tcs_lens):
+                    latent, latent_lens, attn_geo = tokens_nbors, tokens_nbors_lens, None
+                    if geo is not None and uses_neighbourhood(self.dn_cfg, stream_name):
+                        # cell of every target point, relative positions to the K slot cells
+                        n_cells = torch.arange(len(tcls), device=tcls.device) % s[1]
+                        cell_idx = torch.repeat_interleave(n_cells, tcls.to(torch.int64))
+                        feats = geo.relative_features(t_coords, cell_idx)
+                        attn_geo = (feats, geo.pad[cell_idx], geo.slot_ring, k_onehot)
+                        latent, latent_lens = tokens_nbors_dn, tokens_nbors_dn_lens
+
+                    def decode(
+                        queries,
+                        stream_name=stream_name,
+                        tcs_lens=tcs_lens,
+                        latent=latent,
+                        latent_lens=latent_lens,
+                        attn_geo=attn_geo,
+                    ):
+                        extra = {} if attn_geo is None else {"attn_geo": attn_geo}
                         toks = self.target_token_engines[stream_name](
-                            latent=tokens_nbors,
+                            latent=latent,
                             output=queries,
-                            latent_lens=tokens_nbors_lens,
+                            latent_lens=latent_lens,
                             output_lens=tcs_lens,
                             coordinates=t_coords,
+                            **extra,
                         )
                         # final prediction head to map back to physical space
                         return self.pred_heads[stream_name](toks)

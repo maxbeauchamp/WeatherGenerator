@@ -177,7 +177,7 @@ class ZarrSource:
                 arr[s][:, j[ok]] = np.nanmean(d["data"][ok], axis=2).T  # mean over ens
             fields[kind] = arr
         vt = np.array([pt[1]["times"].max() for pt in per], dtype="datetime64[ns]")
-        ref_t = per[0][1]["ref_time"]
+        ref_t = W.forecast_reference_time(st, str(sample), self.stream, vt)
         out = dict(chans=chans, fields=fields, valid_time=vt, ref_time=ref_t,
                    lead_h=((vt - ref_t) / np.timedelta64(1, "h")).astype(np.float64))
         self._cache = {sample: out}  # keep one sample in memory

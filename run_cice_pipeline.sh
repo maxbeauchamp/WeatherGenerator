@@ -21,6 +21,10 @@
 #   ./run_cice_pipeline.sh fm1          # train the CICE FM decoder only (from R2_ID)
 #   ./run_cice_pipeline.sh fm2          # everything trainable, low LR
 #   ./run_cice_pipeline.sh fm-infer     # 7-day ensemble inference on 2023 + plots
+#   --- decoder neighbourhood (relative-position attention bias, 2 rings; against HEALPix seams) ---
+#   ./run_cice_pipeline.sh dn-check     # non-regression: zero-init bias (rings 1 and 2) == original
+#   ./run_cice_pipeline.sh dn1          # ocean (d5xirkmf): learn the bias only
+#   ./run_cice_pipeline.sh dn2          # ocean: decoders + bias, low LR
 #
 # Training steps are long: with SLURM=1 they are submitted with launch-slurm.py. The slurm
 # launcher generates its own run id: then set P1_ID / P2_ID to the printed ids for the next steps.
@@ -41,6 +45,7 @@ SLURM=${SLURM:-0}
 CFG=${CFG:-../WeatherGenerator-configs/config}
 WD=${WD:-/e/scratch/weatherai/shared_work}
 DATA=${DATA:-/e/data1/slmet/ml_training}
+CICE_ZARR=${CICE_ZARR:-$DATA/cice_cglorsv8_1993_2023.zarr}
 READER=packages/readers_extra/src/weathergen/readers_extra/data_reader_grep.py
 LAUNCH=../WeatherGenerator-private/hpc/launch-slurm.py
 
@@ -49,7 +54,9 @@ train() {  # train <from_run_id> <run_id> <config>
     "$LAUNCH" --nodes "$NODES" --from-run-id "$1" --config "$3"
     echo ">> submitted. Set the printed run id for the next step, e.g.: export P1_ID=<id>"
   else
-    uv run --offline train_continue --from-run-id "$1" --run-id "$2" --config "$3" 2>&1 | tee "log_$2.txt"
+    # FROM_MINI_EPOCH=N: start from the chkpt0000N of the previous run (default: _latest)
+    uv run --offline train_continue --from-run-id "$1" ${FROM_MINI_EPOCH:+--mini-epoch "$FROM_MINI_EPOCH"} \
+      --run-id "$2" --config "$3" 2>&1 | tee "log_$2.txt"
   fi
 }
 
@@ -60,7 +67,7 @@ case "${1:-}" in
       grep -q "$k" "$READER" && echo "OK   $k" || { echo "MISSING patch: $k"; exit 1; }
     done
     echo "== data"
-    for z in "$DATA/cice_cglorsv8_1993_2023.zarr" "$DATA/nemo_cglorsv8_subset_1993_2023.zarr"; do
+    for z in "$CICE_ZARR" "$DATA/nemo_cglorsv8_subset_1993_2023.zarr"; do
       [[ -e "$z" ]] && echo "OK   $z" || { echo "MISSING $z"; exit 1; }
     done
     echo "== streams vs $BASE_ID"
@@ -75,7 +82,7 @@ case "${1:-}" in
     train "$P1_ID" "$P2_ID" "$CFG/finetune_cice_arctic_phase2.yml"
     ;;
   infer)
-    uv run --offline inference --from-run-id "$P2_ID" --run-id "$INF_ID" \
+    uv run --offline inference --from-run-id "$P2_ID" ${MINI_EPOCH:+--mini-epoch "$MINI_EPOCH"} --run-id "$INF_ID" \
       --config "$CFG/inference_cice_arctic.yml" 2>&1 | tee "log_$INF_ID.txt"
     grep -E "Checkpoint|Missing keys|Unused keys|stats_override|domain|selected source channels" \
       "log_$INF_ID.txt" || true
@@ -88,7 +95,7 @@ case "${1:-}" in
     ;;
   export)
     uv run --offline python scripts/wg_zip2netcdf.py --run-id "$INF_ID" --stream CICE \
-      --grid-zarr "$DATA/cice_cglorsv8_1993_2023.zarr"
+      --grid-zarr "$CICE_ZARR"
     uv run --offline python scripts/wg_zip2netcdf.py --run-id "$INF_ID" --stream CGLORS-OCEAN \
       --channels thetao_0.5 so_0.5 uo_0.5 vo_0.5 zos \
       --grid-zarr "$DATA/nemo_cglorsv8_subset_1993_2023.zarr"
@@ -179,6 +186,33 @@ case "${1:-}" in
       --samples ${SAMPLES:-0} --vars aice hi --days 1 4 7 --animate --timeseries --label "$FMINF_ID" \
       --out-dir "$WD/results/$FMINF_ID/figs_seaice"
     ;;
+  dn-check)
+    # same model, same dates: original decoders vs zero-initialised bias with 1 and 2 rings.
+    # Not bit-identical (the bias runs flash attention with a larger head dimension, bf16), so
+    # look at "rel": ~1e-3 or below is numerical noise, 1e-1 or more would be a bug.
+    for r in inf_dn_off inf_dn_r1 inf_dn_r2; do rm -rf "$WD/results/$r"; done
+    common=(test_config.start_date=2023-01-01T00:00 test_config.end_date=2023-03-31T00:00
+            test_config.shuffle=False test_config.samples_per_mini_epoch=2
+            test_config.output.num_samples=2 test_config.forecast.num_steps=2)
+    uv run --offline inference --from-run-id "$BASE_ID" --run-id inf_dn_off \
+      --options "${common[@]}" 2>&1 | tee log_inf_dn_off.txt
+    for rings in 1 2; do
+      uv run --offline inference --from-run-id "$BASE_ID" --run-id inf_dn_r$rings \
+        --options "${common[@]}" decoder_neighbourhood.enabled=True decoder_neighbourhood.rings=$rings \
+        2>&1 | tee log_inf_dn_r$rings.txt
+      grep -E "Decoder neighbourhood|Decoder relative-position" log_inf_dn_r$rings.txt || true
+      uv run --offline python scripts/compare_inference_zips.py --tol 1e-2 \
+        "$WD"/results/inf_dn_off/validation_chkpt*_rank0000.zip \
+        "$WD"/results/inf_dn_r$rings/validation_chkpt*_rank0000.zip || true
+    done
+    ;;
+  dn1)
+    train "$BASE_ID" "${DN1_ID:-ft_ocean_dn1}" "$CFG/finetune_ocean_dn_phase1.yml"
+    echo ">> check: 'Decoder relative-position bias: N' and N = total trainable parameters"
+    ;;
+  dn2)
+    train "${DN1_ID:-ft_ocean_dn1}" "${DN2_ID:-ft_ocean_dn2}" "$CFG/finetune_ocean_dn_phase2.yml"
+    ;;
   *)
-    sed -n '2,27p' "$0"; exit 1 ;;
+    sed -n '2,30p' "$0"; exit 1 ;;
 esac
