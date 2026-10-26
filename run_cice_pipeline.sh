@@ -25,6 +25,11 @@
 #   ./run_cice_pipeline.sh dn-check     # non-regression: zero-init bias (rings 1 and 2) == original
 #   ./run_cice_pipeline.sh dn1          # ocean (d5xirkmf): learn the bias only
 #   ./run_cice_pipeline.sh dn2          # ocean: decoders + bias, low LR
+#   --- simplified base experiment: ice + ERA5 only, from scratch (no ocean, smaller model) ---
+#   ./run_cice_pipeline.sh ie-smoke     # 1 short mini-epoch, interactive
+#   ./run_cice_pipeline.sh ie1          # from scratch, 2-day rollouts (32 mini-epochs)
+#   ./run_cice_pipeline.sh ie2          # continue with 7-day rollouts (8 mini-epochs)
+#   ./run_cice_pipeline.sh ie-infer     # 2023, 7 days + FastEval + plots
 #
 # Training steps are long: with SLURM=1 they are submitted with launch-slurm.py. The slurm
 # launcher generates its own run id: then set P1_ID / P2_ID to the printed ids for the next steps.
@@ -59,6 +64,21 @@ train() {  # train <from_run_id> <run_id> <config>
       --run-id "$2" --config "$3" 2>&1 | tee "log_$2.txt"
   fi
 }
+
+train_scratch() {  # train_scratch <run_id> <config> [extra --options...]
+  if [[ "$SLURM" == "1" ]]; then
+    "$LAUNCH" --nodes "$NODES" --config "$2"
+    echo ">> submitted. Set the printed run id for the next step, e.g.: export IE1_ID=<id>"
+  else
+    local rid=$1 cfg=$2; shift 2
+    local opts=(); [[ $# -gt 0 ]] && opts=(--options "$@")
+    uv run --offline train --run-id "$rid" --config "$cfg" "${opts[@]}" 2>&1 | tee "log_$rid.txt"
+  fi
+}
+
+IE1_ID=${IE1_ID:-ice_era5_s1}
+IE2_ID=${IE2_ID:-ice_era5_s2}
+IEINF_ID=${IEINF_ID:-inf_ice_era5}
 
 case "${1:-}" in
   check)
@@ -213,6 +233,31 @@ case "${1:-}" in
   dn2)
     train "${DN1_ID:-ft_ocean_dn1}" "${DN2_ID:-ft_ocean_dn2}" "$CFG/finetune_ocean_dn_phase2.yml"
     ;;
+  ie-smoke)
+    rm -rf "$WD/models/ice_era5_smoke" "$WD/results/ice_era5_smoke"
+    SLURM=0 train_scratch ice_era5_smoke "$CFG/train_ice_era5_scratch.yml" \
+      training_config.num_mini_epochs=1 training_config.samples_per_mini_epoch=32 \
+      validation_config.samples_per_mini_epoch=16
+    grep -E "Total number of trainable|domain|overridden|s/sec|validation" log_ice_era5_smoke.txt | head -30 || true
+    ;;
+  ie1)
+    train_scratch "$IE1_ID" "$CFG/train_ice_era5_scratch.yml"
+    ;;
+  ie2)
+    FROM_MINI_EPOCH=${FROM_MINI_EPOCH:-32} train "$IE1_ID" "$IE2_ID" "$CFG/train_ice_era5_long.yml"
+    ;;
+  ie-infer)
+    rm -rf "$WD/results/$IEINF_ID"
+    uv run --offline inference --from-run-id "$IE2_ID" --mini-epoch "${MINI_EPOCH:-8}" \
+      --run-id "$IEINF_ID" --config "$CFG/inference_ice_era5.yml" 2>&1 | tee "log_$IEINF_ID.txt"
+    mkdir -p config/evaluate
+    sed -e "s#__RUN__#$IEINF_ID#g" -e "s#__WD__#$WD#g" "$CFG/evaluate/eval_ice_era5.yml" \
+      > "config/evaluate/eval_$IEINF_ID.yml"
+    uv run --offline evaluate --config "config/evaluate/eval_$IEINF_ID.yml" 2>&1 | tee "log_eval_$IEINF_ID.txt"
+    uv run --offline python scripts/plot_seaice.py "$WD/results/$IEINF_ID/"validation_chkpt*_rank*.zip \
+      --samples ${SAMPLES:-0} --vars aice hi speed --days 1 4 7 --animate --timeseries \
+      --label "$IEINF_ID" --out-dir "$WD/results/$IEINF_ID/figs_seaice"
+    ;;
   *)
-    sed -n '2,30p' "$0"; exit 1 ;;
+    sed -n '2,35p' "$0"; exit 1 ;;
 esac

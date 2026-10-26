@@ -1,0 +1,33 @@
+# FastEval for the ice + ERA5 model (CICE only, 7-day forecasts). inf_ice_era5 / /e/scratch/weatherai/shared_work are replaced by run_cice_pipeline.sh
+# (or by hand). Region "arctic" of FastEval = 50-90N (our stream domain starts at 45N).
+evaluation:
+  metrics:
+  - rmse
+  score_plots: [lead_time]
+  summary_dir: "/e/scratch/weatherai/shared_work/results/inf_ice_era5/plots"
+  print_summary: false
+  log_scale: false
+  add_grid: false
+
+run_ids:
+    inf_ice_era5:
+        label: "ice + ERA5 (scratch)"
+        results_base_dir: "/e/scratch/weatherai/shared_work/results/inf_ice_era5/"
+        rank: "all"
+        streams:
+            CICE:
+              persistence: true                 # persistence is THE baseline for sea ice
+              regions: ["arctic"]
+              channels: ["aice", "hi", "hs", "uvel", "vvel"]
+              evaluation:
+                forecast_step: "all"
+                sample: "all"
+                ensemble: "all"
+              plotting:
+                sample: [0]
+                forecast_step: [1, 4, 7]
+                data_plots:
+                  - maps:
+                      predictions: [image]
+                      target: [image]
+                      bias: [image]
