@@ -228,3 +228,4 @@ output
 models
 results
 reports
+log_*.txt

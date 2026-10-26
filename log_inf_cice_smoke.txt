@@ -1,145 +1,0 @@
-Logging set up. Logs are in /e/scratch/weatherai/shared_work/logs/inf_cice_smoke
-DDP initialization: rank=0, world_size=1
-TimeWindowHandler: start=2023-01-01T00:00:00.000000000, end=2023-12-31T00:00:00.000000000, len=24:00:00, step=24:00:00
-forecast_steps : 7
-Sufficient available samples in the time range specified
-Opening dataset with type: grep from stream config CICE.
-CICE: dataset opened with Dask.
-Dataset 'CICE' uses curvilinear grid (TLAT/TLON).
-CICE selected source channels: ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel'] (indices: [np.int64(0), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11)])
-CICE selected target channels: ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel'] (indices: [np.int64(0), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11)])
-CICE: domain {'lat_min': 45.0, 'lat_max': 90.0} keeps 160744 / 1512000 points
-CICE: aice mean/std overridden -> 0.38677, 0.45656
-CICE: hi mean/std overridden -> 0.716027, 1.01352
-CICE: hs mean/std overridden -> 0.0311995, 0.0618096
-CICE: strength mean/std overridden -> 9683.85, 19886.7
-CICE: sig1 mean/std overridden -> -0.215904, 0.19174
-CICE: sig2 mean/std overridden -> -0.489426, 0.206826
-CICE: uvel mean/std overridden -> -0.00161477, 0.0701565
-CICE: vvel mean/std overridden -> -0.00829278, 0.0745611
-CICE: source channels: ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel']
-CICE: target channels: ['aice', 'hi', 'hs', 'sig1', 'sig2', 'strength', 'uvel', 'vvel']
-CICE: grid shape: 1050 x 1440
-Opening dataset with type: anemoi from stream config ERA5.
-ERA5: source channels: ['10u', '10v', '2d', '2t', 'sp', 'tp']
-ERA5: target channels: []
-ERA5: geoinfo channels: ['z', 'lsm', 'slor', 'sdor', 'insolation', 'cos_local_time', 'sin_local_time', 'cos_julian_day', 'sin_julian_day']
-Opening dataset with type: grep from stream config CGLORS-OCEAN.
-CGLORS-OCEAN: dataset opened with Dask.
-Dataset 'CGLORS-OCEAN' uses curvilinear grid (nav_lat/nav_lon).
-CGLORS-OCEAN selected source channels: ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos'] (indices: [np.int64(119), np.int64(156), np.int64(189), np.int64(221), np.int64(255)])
-CGLORS-OCEAN selected target channels: ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos'] (indices: [np.int64(119), np.int64(156), np.int64(189), np.int64(221), np.int64(255)])
-CGLORS-OCEAN: source channels: ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos']
-CGLORS-OCEAN: target channels: ['so_0.5', 'thetao_0.5', 'uo_0.5', 'vo_0.5', 'zos']
-CGLORS-OCEAN: grid shape: 1050 x 1440
-Opening dataset with type: grep from stream config CGLORS-OCEAN-2-300m.
-CGLORS-OCEAN-2-300m: dataset opened with Dask.
-Dataset 'CGLORS-OCEAN-2-300m' uses curvilinear grid (nav_lat/nav_lon).
-CGLORS-OCEAN-2-300m selected source channels: ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9'] (indices: [np.int64(108), np.int64(142), np.int64(179), np.int64(212), np.int64(244), np.int64(126), np.int64(163), np.int64(196), np.int64(228), np.int64(135), np.int64(172), np.int64(205), np.int64(237), np.int64(144), np.int64(181), np.int64(214), np.int64(246), np.int64(150), np.int64(187), np.int64(220), np.int64(252), np.int64(124), np.int64(161), np.int64(194), np.int64(226), np.int64(129), np.int64(166), np.int64(199), np.int64(231), np.int64(136), np.int64(173), np.int64(206), np.int64(238)])
-CGLORS-OCEAN-2-300m selected target channels: ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9'] (indices: [np.int64(108), np.int64(142), np.int64(179), np.int64(212), np.int64(244), np.int64(126), np.int64(163), np.int64(196), np.int64(228), np.int64(135), np.int64(172), np.int64(205), np.int64(237), np.int64(144), np.int64(181), np.int64(214), np.int64(246), np.int64(150), np.int64(187), np.int64(220), np.int64(252), np.int64(124), np.int64(161), np.int64(194), np.int64(226), np.int64(129), np.int64(166), np.int64(199), np.int64(231), np.int64(136), np.int64(173), np.int64(206), np.int64(238)])
-CGLORS-OCEAN-2-300m: source channels: ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9']
-CGLORS-OCEAN-2-300m: target channels: ['mldr10_1', 'so_5.1', 'thetao_5.1', 'uo_5.1', 'vo_5.1', 'so_16.5', 'thetao_16.5', 'uo_16.5', 'vo_16.5', 'so_30.9', 'thetao_30.9', 'uo_30.9', 'vo_30.9', 'so_53.9', 'thetao_53.9', 'uo_53.9', 'vo_53.9', 'so_86.9', 'thetao_86.9', 'uo_86.9', 'vo_86.9', 'so_133.1', 'thetao_133.1', 'uo_133.1', 'vo_133.1', 'so_199.8', 'thetao_199.8', 'uo_199.8', 'vo_199.8', 'so_300.9', 'thetao_300.9', 'uo_300.9', 'vo_300.9']
-CGLORS-OCEAN-2-300m: grid shape: 1050 x 1440
-Opening dataset with type: grep from stream config CGLORS-OCEAN-370-5000m.
-CGLORS-OCEAN-370-5000m: dataset opened with Dask.
-Dataset 'CGLORS-OCEAN-370-5000m' uses curvilinear grid (nav_lat/nav_lon).
-CGLORS-OCEAN-370-5000m selected source channels: ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5'] (indices: [np.int64(138), np.int64(175), np.int64(208), np.int64(240), np.int64(145), np.int64(182), np.int64(215), np.int64(247), np.int64(149), np.int64(186), np.int64(219), np.int64(251), np.int64(123), np.int64(160), np.int64(193), np.int64(225), np.int64(134), np.int64(171), np.int64(204), np.int64(236), np.int64(137), np.int64(174), np.int64(207), np.int64(239), np.int64(143), np.int64(180), np.int64(213), np.int64(245)])
-CGLORS-OCEAN-370-5000m selected target channels: ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5'] (indices: [np.int64(138), np.int64(175), np.int64(208), np.int64(240), np.int64(145), np.int64(182), np.int64(215), np.int64(247), np.int64(149), np.int64(186), np.int64(219), np.int64(251), np.int64(123), np.int64(160), np.int64(193), np.int64(225), np.int64(134), np.int64(171), np.int64(204), np.int64(236), np.int64(137), np.int64(174), np.int64(207), np.int64(239), np.int64(143), np.int64(180), np.int64(213), np.int64(245)])
-CGLORS-OCEAN-370-5000m: source channels: ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5']
-CGLORS-OCEAN-370-5000m: target channels: ['so_370.7', 'thetao_370.7', 'uo_370.7', 'vo_370.7', 'so_565.3', 'thetao_565.3', 'uo_565.3', 'vo_565.3', 'so_856.7', 'thetao_856.7', 'uo_856.7', 'vo_856.7', 'so_1265.9', 'thetao_1265.9', 'uo_1265.9', 'vo_1265.9', 'so_2776.0', 'thetao_2776.0', 'uo_2776.0', 'vo_2776.0', 'so_3513.4', 'thetao_3513.4', 'uo_3513.4', 'vo_3513.4', 'so_5089.5', 'thetao_5089.5', 'uo_5089.5', 'vo_5089.5']
-CGLORS-OCEAN-370-5000m: grid shape: 1050 x 1440
-CICE :: coord embed: :: [256, 256, 256]
-CGLORS-OCEAN :: coord embed: :: [256, 256, 256]
-CGLORS-OCEAN-2-300m :: coord embed: :: [256, 256, 256]
-CGLORS-OCEAN-370-5000m :: coord embed: :: [256, 256, 256]
-Freeze block StreamEmbedder_ERA5
-Freeze block StreamEmbedder_CGLORS-OCEAN
-Freeze block StreamEmbedder_CGLORS-OCEAN-2-300m
-Freeze block StreamEmbedder_CGLORS-OCEAN-370-5000m
-Freeze block embed_target_coords_CGLORS-OCEAN
-Freeze block embed_target_coords_CGLORS-OCEAN-2-300m
-Freeze block embed_target_coords_CGLORS-OCEAN-370-5000m
-Freeze block TargetPredictionEngine_CGLORS-OCEAN
-Freeze block TargetPredictionEngine_CGLORS-OCEAN-2-300m
-Freeze block TargetPredictionEngine_CGLORS-OCEAN-370-5000m
-Freeze block EnsPredictionHead_CGLORS-OCEAN
-Freeze block EnsPredictionHead_CGLORS-OCEAN-2-300m
-Freeze block EnsPredictionHead_CGLORS-OCEAN-370-5000m
-Continuing run with id=ft_cice_smoke at mini_epoch 1.
-Checkpoint ft_cice_smoke_chkpt00001.chkpt loaded successfully with all weights matching.
-Starting inference with id=inf_cice_smoke.
-0::0 : dataset [0,16) : [0,1)
-0::1 : dataset [0,16) : [1,2)
-iter_start=0, iter_end=1, len=16
-0::2 : dataset [0,16) : [2,3)
-iter_start=1, iter_end=2, len=16
-iter_start=2, iter_end=3, len=16
-0::3 : dataset [0,16) : [3,4)
-forecast_steps : 7
-forecast_steps : 7
-iter_start=3, iter_end=4, len=16
-Sufficient available samples in the time range specified
-forecast_steps : 7
-Sufficient available samples in the time range specified
-0::4 : dataset [0,16) : [4,5)
-Sufficient available samples in the time range specified
-iter_start=4, iter_end=5, len=16
-0::5 : dataset [0,16) : [5,6)
-forecast_steps : 7
-iter_start=5, iter_end=6, len=16
-Sufficient available samples in the time range specified
-0::6 : dataset [0,16) : [6,7)
-forecast_steps : 7
-0::7 : dataset [0,16) : [7,8)
-iter_start=6, iter_end=7, len=16
-Sufficient available samples in the time range specified
-forecast_steps : 7
-iter_start=7, iter_end=8, len=16
-0::8 : dataset [0,16) : [8,9)
-Sufficient available samples in the time range specified
-iter_start=8, iter_end=9, len=16
-forecast_steps : 7
-0::9 : dataset [0,16) : [9,10)
-Sufficient available samples in the time range specified
-forecast_steps : 7
-iter_start=9, iter_end=10, len=16
-0::10 : dataset [0,16) : [10,11)
-Sufficient available samples in the time range specified
-forecast_steps : 7
-iter_start=10, iter_end=11, len=16
-0::11 : dataset [0,16) : [11,12)
-Sufficient available samples in the time range specified
-forecast_steps : 7
-iter_start=11, iter_end=12, len=16
-Sufficient available samples in the time range specified
-forecast_steps : 7
-0::12 : dataset [0,16) : [12,13)
-Sufficient available samples in the time range specified
-iter_start=12, iter_end=13, len=16
-forecast_steps : 7
-0::13 : dataset [0,16) : [13,14)
-Sufficient available samples in the time range specified
-iter_start=13, iter_end=14, len=16
-0::14 : dataset [0,16) : [14,15)
-iter_start=14, iter_end=15, len=16
-forecast_steps : 7
-Sufficient available samples in the time range specified
-forecast_steps : 7
-Sufficient available samples in the time range specified
-forecast_steps : 7
-Sufficient available samples in the time range specified
-0::15 : dataset [0,16) : [15,16)
-iter_start=15, iter_end=16, len=16
-forecast_steps : 7
-Sufficient available samples in the time range specified
-  0%|          | 0/16 [00:00<?, ?it/s]  6%|▋         | 1/16 [05:10<1:17:39, 310.61s/it] 12%|█▎        | 2/16 [06:16<38:54, 166.77s/it]   19%|█▉        | 3/16 [07:23<26:14, 121.11s/it] 25%|██▌       | 4/16 [08:30<19:56, 99.70s/it]  31%|███▏      | 5/16 [09:37<16:08, 88.03s/it] 38%|███▊      | 6/16 [10:45<13:31, 81.13s/it] 44%|████▍     | 7/16 [11:52<11:30, 76.69s/it] 50%|█████     | 8/16 [13:01<09:53, 74.23s/it] 56%|█████▋    | 9/16 [14:09<08:25, 72.24s/it] 62%|██████▎   | 10/16 [15:18<07:06, 71.08s/it] 69%|██████▉   | 11/16 [16:26<05:51, 70.34s/it] 75%|███████▌  | 12/16 [17:35<04:39, 69.77s/it] 81%|████████▏ | 13/16 [18:44<03:28, 69.45s/it] 88%|████████▊ | 14/16 [19:52<02:18, 69.26s/it] 94%|█████████▍| 15/16 [21:01<01:09, 69.19s/it]100%|██████████| 16/16 [22:11<00:00, 69.21s/it]validation (inf_cice_smoke) : 000 : 
-                        0.18135522305965424
-LossPhysical.CICE.mse.avg : 5.3672E-01 	
-LossPhysical.CGLORS-OCEAN.mse.avg : 6.3274E-02 	
-LossPhysical.CGLORS-OCEAN-2-300m.mse.avg : 6.3227E-02 	
-LossPhysical.CGLORS-OCEAN-370-5000m.mse.avg : 6.2197E-02 	
-LossPhysical.loss_avg : 1.8136E-01 	
-
-
-100%|██████████| 16/16 [22:11<00:00, 83.23s/it]
-Finished inference run with id: inf_cice_smoke
