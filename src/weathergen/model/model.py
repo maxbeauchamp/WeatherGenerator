@@ -38,16 +38,11 @@ from weathergen.model.engines import (
     TargetPredictionEngineClassic,
 )
 from weathergen.model import flow_matching as fmatch
-from weathergen.model.decoder_neighbourhood import (
-    DecoderGeometry,
-    RelativePositionBias,
-    get_decoder_neighbourhood_config,
-    uses_neighbourhood,
-)
 from weathergen.model.flow_matching import FlowMatchingConditioner, get_flow_matching_config
 from weathergen.model.forcing_injection import ForcingInjection, get_forcing_reinjection_config
 from weathergen.model.layers import MLP, NamedLinear
 from weathergen.model.norms import AdaLayerNorm
+from weathergen.model.partition_of_unity import blend, get_partition_of_unity_config, uses_pu
 from weathergen.model.utils import get_num_parameters
 from weathergen.utils.distributed import is_root
 from weathergen.utils.utils import get_dtype, is_stream_forcing
@@ -163,12 +158,6 @@ class ModelParams(torch.nn.Module):
 
         self.q_cells_lens = torch.nn.Parameter(
             torch.ones(self.num_healpix_cells + 1, dtype=torch.int32), requires_grad=False
-        )
-
-        # decoder neighbourhood geometry (None = disabled; non-persistent buffers)
-        dn = get_decoder_neighbourhood_config(cf)
-        self.dec_geometry = (
-            DecoderGeometry(self.healpix_level, dn["rings"]) if dn["enabled"] else None
         )
         self.q_cells_lens.data[0] = 0
 
@@ -348,8 +337,8 @@ class Model(torch.nn.Module):
         self.fm_cfg = get_flow_matching_config(cf)
         self.fm_conditioners: nn.ModuleDict | None = None
         self.fm_sampling = False
-        # relative-position bias / wider neighbourhood in the decoders (disabled by default)
-        self.dn_cfg = get_decoder_neighbourhood_config(cf)
+        # partition of unity of the decoders (disabled = original decoders)
+        self.pu_cfg = get_partition_of_unity_config(cf)
         self.pred_heads = None
         self.q_cells: torch.Tensor | None = None
         self.streams: dict[str, typing.Any] = cf.streams
@@ -572,19 +561,6 @@ class Model(torch.nn.Module):
                         stream_name=stream_name,
                     )
 
-        if self.dn_cfg["enabled"]:
-            assert cf.decoder_type == "PerceiverIOCoordConditioning", (
-                "decoder_neighbourhood is implemented for decoder_type PerceiverIOCoordConditioning"
-            )
-            tte_names = list(self.target_token_engines.keys())
-            dn_streams = [n for n in tte_names if uses_neighbourhood(self.dn_cfg, n)]
-            assert dn_streams, f"decoder_neighbourhood: no decoder among {self.dn_cfg['streams']}"
-            if is_root():
-                logger.info(
-                    f"Decoder neighbourhood for {dn_streams}: rings={self.dn_cfg['rings']}, "
-                    f"relative-position bias hidden={self.dn_cfg['hidden']}"
-                )
-
         # flow-matching conditioning of the decoders of the selected streams
         if self.fm_cfg["enabled"]:
             assert cf.decoder_type != "Linear", "flow matching needs a target prediction engine"
@@ -608,6 +584,17 @@ class Model(torch.nn.Module):
                     f"target={self.fm_cfg['target']}, "
                     f"loss_weighting={self.fm_cfg['loss_weighting']}, "
                     f"inference={self.fm_cfg['inference']}"
+                )
+
+        if self.pu_cfg["enabled"]:
+            assert cf.decoder_type != "Linear", (
+                "partition of unity needs a target prediction engine"
+            )
+            if is_root():
+                names = self.pu_cfg["streams"] or "all streams"
+                logger.info(
+                    f"Partition of unity of the decoders for {names}: "
+                    f"support={self.pu_cfg['support']} d_cell"
                 )
 
         # Latent heads for losses
@@ -655,8 +642,7 @@ class Model(torch.nn.Module):
     def reset_parameters(self):
         def _reset_params(module):
             reset_types = AdaLayerNorm | nn.Linear | nn.LayerNorm
-            new_types = ForcingInjection | FlowMatchingConditioner | RelativePositionBias
-            if isinstance(module, reset_types | new_types):
+            if isinstance(module, reset_types | ForcingInjection | FlowMatchingConditioner):
                 module.reset_parameters()
             else:
                 pass
@@ -692,9 +678,6 @@ class Model(torch.nn.Module):
         )
         num_params_fm = (
             get_num_parameters(self.fm_conditioners) if self.fm_conditioners is not None else 0
-        )
-        num_params_dn = sum(
-            get_num_parameters(m) for m in self.modules() if isinstance(m, RelativePositionBias)
         )
 
         mdict = self.embed_target_coords
@@ -732,8 +715,6 @@ class Model(torch.nn.Module):
             print(f" Forcing re-injection: {num_params_fi:,}")
         if self.fm_conditioners is not None:
             print(f" Flow-matching conditioning: {num_params_fm:,}")
-        if self.dn_cfg["enabled"]:
-            print(f" Decoder relative-position bias: {num_params_dn:,}")
         print(" coordinate embedding, prediction networks and prediction heads:")
         zps = zip(
             self.streams.keys(),
@@ -837,12 +818,13 @@ class Model(torch.nn.Module):
         return torch.cat(parts) if parts else torch.zeros((0, num_channels), device=device)
 
     def predict_flow_matching(
-        self, stream_name, step, batch, tc_tokens, decode, t_coords_lens, fm_state
+        self, stream_name, step, batch, tc_tokens, decode_points, t_coords_lens, fm_state
     ) -> torch.Tensor:
         """
         Flow-matching decoder of one stream at one forecast step (see model/flow_matching.py).
-        Returns the state prediction(s), shape (members, N, C): 1 member in the training /
-        validation pass, num_members when sampling.
+        decode_points(cond): decoder output at the target points with the queries shifted by
+        cond (per point). Returns the state prediction(s), shape (members, N, C): 1 member in
+        the training / validation pass, num_members when sampling.
         """
         fm = self.fm_cfg
         cond = self.fm_conditioners[stream_name]
@@ -852,8 +834,7 @@ class Model(torch.nn.Module):
         out_dtype = {}
 
         def denoise(x_t, x_prev_c, t_pts):
-            queries = tc_tokens + cond(x_t, x_prev_c, t_pts).to(tc_tokens.dtype)
-            out = decode(queries)  # (1, N, C) state prediction
+            out = decode_points(cond(x_t, x_prev_c, t_pts).to(tc_tokens.dtype))  # (1, N, C)
             out_dtype.setdefault("dtype", out.dtype)
             return out
 
@@ -916,6 +897,30 @@ class Model(torch.nn.Module):
 
         return output
 
+    def _pu_gather(self, batch, stream_name, step, t_coords_lens):
+        """
+        Partition of unity: (point, cell) pairs of all samples of the batch, concatenated as the
+        target points are (pu_point is offset by the points of the previous samples).
+        Returns coords (P, W), lens (1 + cells * batch,) int32 for varlen attention, point (P,),
+        weight (P,).
+        """
+        coords, lens, points, weights = [], [], [], []
+        offset = 0
+        for sample, n in zip(batch.samples, t_coords_lens, strict=True):
+            sd = sample.streams_data[stream_name]
+            assert sd.target_coords_pu[step] is not None, (
+                f"partition of unity: no (point, cell) pairs for {stream_name} at step {step} "
+                "(the data loader must use the same partition_of_unity config)"
+            )
+            coords.append(sd.target_coords_pu[step])
+            lens.append(sd.target_coords_pu_lens[step])
+            points.append(sd.pu_point[step] + offset)
+            weights.append(sd.pu_weight[step])
+            offset += n
+        lens = torch.cat(lens).to(torch.int32)
+        lens = torch.cat([torch.zeros(1, dtype=torch.int32, device=lens.device), lens])
+        return torch.cat(coords), lens, torch.cat(points), torch.cat(weights)
+
     def predict_decoders(
         self,
         model_params: ModelParams,
@@ -958,21 +963,6 @@ class Model(torch.nn.Module):
             (s[0] * s[1] + 1,), fill_value=9, dtype=torch.int32, device=tokens_nbors.device
         )
         tokens_nbors_lens[0] = 0
-
-        # decoder neighbourhood: K slot cells per cell (9 or 25) and the slot of every key token
-        geo = model_params.dec_geometry if self.dn_cfg["enabled"] else None
-        if geo is not None:
-            k_slots, n_q = geo.num_slots, self.cf.ae_local_num_queries
-            if k_slots == 9:  # rings 1: same cells, same order as hp_nbours
-                tokens_nbors_dn, tokens_nbors_dn_lens = tokens_nbors, tokens_nbors_lens
-            else:
-                idxs_dn = geo.nbours.unsqueeze(0).repeat((batch_size, 1, 1)).flatten(0, 1)
-                tokens_nbors_dn = tokens.reshape(s).flatten(0, 1)[idxs_dn.flatten()].flatten(0, 1)
-                tokens_nbors_dn_lens = torch.full(
-                    (s[0] * s[1] + 1,), k_slots * n_q, dtype=torch.int32, device=tokens.device
-                )
-                tokens_nbors_dn_lens[0] = 0
-            k_onehot = geo.key_slots_onehot(s[0] * s[1], n_q, tokens.device, torch.float32)
 
         # pair with tokens from assimilation engine to obtain target tokens
         for stream_name in self.streams.keys():
@@ -1023,41 +1013,46 @@ class Model(torch.nn.Module):
                     ).unsqueeze(0)  # add ensemble dim: shape is then [1, preds_per_coord, channels]
                 else:
 
-                    latent, latent_lens, attn_geo = tokens_nbors, tokens_nbors_lens, None
-                    if geo is not None and uses_neighbourhood(self.dn_cfg, stream_name):
-                        # cell of every target point, relative positions to the K slot cells
-                        n_cells = torch.arange(len(tcls), device=tcls.device) % s[1]
-                        cell_idx = torch.repeat_interleave(n_cells, tcls.to(torch.int64))
-                        feats = geo.relative_features(t_coords, cell_idx)
-                        attn_geo = (feats, geo.pad[cell_idx], geo.slot_ring, k_onehot)
-                        latent, latent_lens = tokens_nbors_dn, tokens_nbors_dn_lens
-
-                    def decode(
-                        queries,
-                        stream_name=stream_name,
-                        tcs_lens=tcs_lens,
-                        latent=latent,
-                        latent_lens=latent_lens,
-                        attn_geo=attn_geo,
-                    ):
-                        extra = {} if attn_geo is None else {"attn_geo": attn_geo}
+                    def decode(queries, coords, lens, stream_name=stream_name):
                         toks = self.target_token_engines[stream_name](
-                            latent=latent,
+                            latent=tokens_nbors,
                             output=queries,
-                            latent_lens=latent_lens,
-                            output_lens=tcs_lens,
-                            coordinates=t_coords,
-                            **extra,
+                            latent_lens=tokens_nbors_lens,
+                            output_lens=lens,
+                            coordinates=coords,
                         )
                         # final prediction head to map back to physical space
                         return self.pred_heads[stream_name](toks)
 
+                    if uses_pu(self.pu_cfg, stream_name):
+                        # partition of unity: decode every (point, cell) pair, blend per point
+                        pu = self._pu_gather(batch, stream_name, step, t_coords_lens)
+                        pu_tokens = checkpoint(tc_embed, pu[0], use_reentrant=False)
+                        n_points = len(t_coords)
+
+                        def decode_points(
+                            cond=None, pu_tokens=pu_tokens, pu=pu, decode=decode, n=n_points
+                        ):
+                            pu_coords, pu_lens, pu_point, pu_weight = pu
+                            q = pu_tokens if cond is None else pu_tokens + cond[pu_point]
+                            pred_pairs = decode(q, pu_coords, pu_lens)
+                            return blend(pred_pairs, pu_point, pu_weight, n)
+
+                    else:
+
+                        def decode_points(
+                            cond=None, tc_tokens=tc_tokens, decode=decode, c=t_coords, ln=tcs_lens
+                        ):
+                            q = tc_tokens if cond is None else tc_tokens + cond
+                            return decode(q, c, ln)
+
                     if self.fm_conditioners is not None and stream_name in self.fm_conditioners:
                         pred = self.predict_flow_matching(
-                            stream_name, step, batch, tc_tokens, decode, t_coords_lens, fm_state
-                        )
+                            stream_name, step, batch, tc_tokens, decode_points, t_coords_lens,
+                            fm_state,
+                        )  # fmt: skip
                     else:
-                        pred = decode(tc_tokens)
+                        pred = decode_points()
 
             # recover batch dimension (ragged, so as list)
             pred = torch.split(pred, t_coords_lens, dim=1)

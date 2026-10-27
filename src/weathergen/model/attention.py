@@ -13,7 +13,6 @@ import torch
 from flash_attn import flash_attn_func, flash_attn_varlen_func
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
 
-from weathergen.model.decoder_neighbourhood import augment_qkv
 from weathergen.model.norms import AdaLayerNorm, RMSNorm
 from weathergen.model.positional_encoding import rotary_pos_emb_2d
 
@@ -367,14 +366,7 @@ class MultiCrossAttentionHeadVarlen(torch.nn.Module):
         self.dtype = attention_dtype
         assert with_flash, "Only flash attention supported at the moment"
 
-    def forward(
-        self, x_q, x_kv, x_q_lens=None, x_kv_lens=None, ada_ln_aux=None, attn_bias=None
-    ):
-        """
-        attn_bias: optional (q_bias (Nq, H, K), k_onehot (Nkv, K)), an additive logit bias per
-        (query, key slot), injected exactly by extending the head dimension (see
-        weathergen.model.decoder_neighbourhood.augment_qkv). None: unchanged behaviour.
-        """
+    def forward(self, x_q, x_kv, x_q_lens=None, x_kv_lens=None, ada_ln_aux=None):
         if self.with_residual:
             x_q_in = x_q
         x_q = self.lnorm_in_q(x_q) if ada_ln_aux is None else self.lnorm_in_q(x_q, ada_ln_aux)
@@ -391,11 +383,6 @@ class MultiCrossAttentionHeadVarlen(torch.nn.Module):
         # set dropout rate according to training/eval mode as required by flash_attn
         dropout_rate = self.dropout_rate if self.training else 0.0
 
-        softmax_scale = None
-        if attn_bias is not None:
-            assert self.softcap == 0.0, "attention bias needs softcap = 0"
-            qs, ks, vs, softmax_scale = augment_qkv(qs, ks, vs.to(qs.dtype), *attn_bias)
-
         if x_kv_lens is not None:
             cum_x_q_lens = torch.cumsum(x_q_lens, 0, dtype=torch.int32)
             cum_x_kv_lens = torch.cumsum(x_kv_lens, 0, dtype=torch.int32)
@@ -409,13 +396,10 @@ class MultiCrossAttentionHeadVarlen(torch.nn.Module):
                 x_kv_lens.max(),
                 softcap=self.softcap,
                 dropout_p=dropout_rate,
-                softmax_scale=softmax_scale,
             )
         else:
             assert False
 
-        if attn_bias is not None:
-            outs = outs[..., : self.dim_head_proj]
         outs = self.proj_out(outs.flatten(-2, -1))
         if self.with_residual:
             outs = x_q_in + outs

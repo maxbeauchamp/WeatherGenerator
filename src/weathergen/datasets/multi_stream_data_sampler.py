@@ -35,6 +35,11 @@ from weathergen.datasets.utils import (
 )
 from weathergen.model.flow_matching import get_flow_matching_config
 from weathergen.model.forcing_injection import get_forcing_reinjection_config
+from weathergen.model.partition_of_unity import (
+    PUGeometry,
+    get_partition_of_unity_config,
+    uses_pu,
+)
 from weathergen.readers_extra.registry import get_extra_reader
 from weathergen.train.utils import TRAIN, Stage, get_batch_size_from_config
 from weathergen.utils.distributed import is_root
@@ -172,6 +177,17 @@ class MultiStreamDataSampler(torch.utils.data.IterableDataset):
             )
         if self.fm_streams and is_root():
             logger.info(f"Flow matching decoders for: {self.fm_streams}")
+
+        # partition of unity: the target coords of these streams also get the (point, cell) pairs
+        self.pu_cfg = get_partition_of_unity_config(cf)
+        self.pu_geo = None
+        if self.pu_cfg["enabled"]:
+            unknown = [s for s in self.pu_cfg["streams"] if s not in self.streams_datasets]
+            assert not unknown, f"partition_of_unity.streams not in the streams config: {unknown}"
+            self.pu_geo = PUGeometry(cf.healpix_level, self.pu_cfg["support"])
+            if is_root():
+                names = self.pu_cfg["streams"] or "all streams"
+                logger.info(f"Partition of unity of the decoders for: {names}")
 
         # RNG seed setup
         rs = cf.data_loading.rng_seed
@@ -498,14 +514,18 @@ Set repeat_data_in_mini_epoch to True if this is undesired."
                 continue
 
             if "target_coords" in mode:
-                (tc, tc_l) = self.tokenizer.get_target_coords(
+                pu_geo = self.pu_geo if uses_pu(self.pu_cfg, stream_info["name"]) else None
+                (tc, tc_l, *pu) = self.tokenizer.get_target_coords(
                     stream_info,
                     rdata,
                     token_data,
                     (time_win_target.start, time_win_target.end),
                     target_mask,
+                    pu_geo=pu_geo,
                 )
                 stream_data.add_target_coords(self._stage, timestep_idx, tc, tc_l, rdata.is_spoof)
+                if pu:
+                    stream_data.add_pu_coords(timestep_idx, *pu[0])
 
                 if fm_init_data is not None:
                     rdata_prev = fm_init_data if step == 0 else output_data[step - 1]

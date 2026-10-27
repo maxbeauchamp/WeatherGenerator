@@ -21,15 +21,10 @@
 #   ./run_cice_pipeline.sh fm1          # train the CICE FM decoder only (from R2_ID)
 #   ./run_cice_pipeline.sh fm2          # everything trainable, low LR
 #   ./run_cice_pipeline.sh fm-infer     # 7-day ensemble inference on 2023 + plots
-#   --- decoder neighbourhood (relative-position attention bias, 2 rings; against HEALPix seams) ---
-#   ./run_cice_pipeline.sh dn-check     # non-regression: zero-init bias (rings 1 and 2) == original
-#   ./run_cice_pipeline.sh dn1          # ocean (d5xirkmf): learn the bias only
-#   ./run_cice_pipeline.sh dn2          # ocean: decoders + bias, low LR
-#   --- simplified base experiment: ice + ERA5 only, from scratch (no ocean, smaller model) ---
-#   ./run_cice_pipeline.sh ie-smoke     # 1 short mini-epoch, interactive
-#   ./run_cice_pipeline.sh ie1          # from scratch, 2-day rollouts (32 mini-epochs)
-#   ./run_cice_pipeline.sh ie2          # continue with 7-day rollouts (8 mini-epochs)
-#   ./run_cice_pipeline.sh ie-infer     # 2023, 7 days + FastEval + plots
+#   --- partition of unity of the decoders (continuous across HEALPix cells; xp_05) ---
+#   ./run_cice_pipeline.sh pu-check     # PU off vs on in the trained BASE_ID: change at start + seams
+#   ./run_cice_pipeline.sh seams        # seam diagnostic of the zips of the runs in SEAM_RUNS
+#   (training chain on ice + ERA5: bash slurm_submissions/submit_ice_era5_pu.sh)
 #
 # Training steps are long: with SLURM=1 they are submitted with launch-slurm.py. The slurm
 # launcher generates its own run id: then set P1_ID / P2_ID to the printed ids for the next steps.
@@ -206,58 +201,32 @@ case "${1:-}" in
       --samples ${SAMPLES:-0} --vars aice hi --days 1 4 7 --animate --timeseries --label "$FMINF_ID" \
       --out-dir "$WD/results/$FMINF_ID/figs_seaice"
     ;;
-  dn-check)
-    # same model, same dates: original decoders vs zero-initialised bias with 1 and 2 rings.
-    # Not bit-identical (the bias runs flash attention with a larger head dimension, bf16), so
-    # look at "rel": ~1e-3 or below is numerical noise, 1e-1 or more would be a bug.
-    for r in inf_dn_off inf_dn_r1 inf_dn_r2; do rm -rf "$WD/results/$r"; done
+  pu-check)
+    for r in inf_pu_off inf_pu_on; do rm -rf "$WD/results/$r"; done   # test runs: start clean
+    # same model, same dates, PU off and on. The PU is NOT the identity at start (no parameters,
+    # the decoder sees each point from the nearby cells): the diff is reported, not tested.
+    # PU_STREAMS: decoders with the PU (default all, e.g. PU_STREAMS="[CICE]").
     common=(test_config.start_date=2023-01-01T00:00 test_config.end_date=2023-03-31T00:00
             test_config.shuffle=False test_config.samples_per_mini_epoch=2
             test_config.output.num_samples=2 test_config.forecast.num_steps=2)
-    uv run --offline inference --from-run-id "$BASE_ID" --run-id inf_dn_off \
-      --options "${common[@]}" 2>&1 | tee log_inf_dn_off.txt
-    for rings in 1 2; do
-      uv run --offline inference --from-run-id "$BASE_ID" --run-id inf_dn_r$rings \
-        --options "${common[@]}" decoder_neighbourhood.enabled=True decoder_neighbourhood.rings=$rings \
-        2>&1 | tee log_inf_dn_r$rings.txt
-      grep -E "Decoder neighbourhood|Decoder relative-position" log_inf_dn_r$rings.txt || true
-      uv run --offline python scripts/compare_inference_zips.py --tol 1e-2 \
-        "$WD"/results/inf_dn_off/validation_chkpt*_rank0000.zip \
-        "$WD"/results/inf_dn_r$rings/validation_chkpt*_rank0000.zip || true
-    done
+    uv run --offline inference --from-run-id "$BASE_ID" ${MINI_EPOCH:+--mini-epoch "$MINI_EPOCH"} \
+      --run-id inf_pu_off --options "${common[@]}" 2>&1 | tee log_inf_pu_off.txt
+    uv run --offline inference --from-run-id "$BASE_ID" ${MINI_EPOCH:+--mini-epoch "$MINI_EPOCH"} \
+      --run-id inf_pu_on --options "${common[@]}" partition_of_unity.enabled=True \
+      "partition_of_unity.streams=${PU_STREAMS:-[]}" 2>&1 | tee log_inf_pu_on.txt
+    grep -E "Partition of unity" log_inf_pu_on.txt || true
+    uv run --offline python scripts/compare_inference_zips.py --tol 1e9 \
+      "$WD"/results/inf_pu_off/validation_chkpt*_rank0000.zip \
+      "$WD"/results/inf_pu_on/validation_chkpt*_rank0000.zip || true
+    SEAM_RUNS="inf_pu_off inf_pu_on" SEAM_OUT=inf_pu_on "$0" seams
     ;;
-  dn1)
-    train "$BASE_ID" "${DN1_ID:-ft_ocean_dn1}" "$CFG/finetune_ocean_dn_phase1.yml"
-    echo ">> check: 'Decoder relative-position bias: N' and N = total trainable parameters"
-    ;;
-  dn2)
-    train "${DN1_ID:-ft_ocean_dn1}" "${DN2_ID:-ft_ocean_dn2}" "$CFG/finetune_ocean_dn_phase2.yml"
-    ;;
-  ie-smoke)
-    rm -rf "$WD/models/ice_era5_smoke" "$WD/results/ice_era5_smoke"
-    SLURM=0 train_scratch ice_era5_smoke "$CFG/train_ice_era5_scratch.yml" \
-      training_config.num_mini_epochs=1 training_config.samples_per_mini_epoch=32 \
-      validation_config.samples_per_mini_epoch=16
-    grep -E "Total number of trainable|domain|overridden|s/sec|validation" log_ice_era5_smoke.txt | head -30 || true
-    ;;
-  ie1)
-    train_scratch "$IE1_ID" "$CFG/train_ice_era5_scratch.yml"
-    ;;
-  ie2)
-    FROM_MINI_EPOCH=${FROM_MINI_EPOCH:-32} train "$IE1_ID" "$IE2_ID" "$CFG/train_ice_era5_long.yml"
-    ;;
-  ie-infer)
-    rm -rf "$WD/results/$IEINF_ID"
-    uv run --offline inference --from-run-id "$IE2_ID" --mini-epoch "${MINI_EPOCH:-8}" \
-      --run-id "$IEINF_ID" --config "$CFG/inference_ice_era5.yml" 2>&1 | tee "log_$IEINF_ID.txt"
-    mkdir -p config/evaluate
-    sed -e "s#__RUN__#$IEINF_ID#g" -e "s#__WD__#$WD#g" "$CFG/evaluate/eval_ice_era5.yml" \
-      > "config/evaluate/eval_$IEINF_ID.yml"
-    uv run --offline evaluate --config "config/evaluate/eval_$IEINF_ID.yml" 2>&1 | tee "log_eval_$IEINF_ID.txt"
-    uv run --offline python scripts/plot_seaice.py "$WD/results/$IEINF_ID/"validation_chkpt*_rank*.zip \
-      --samples ${SAMPLES:-0} --vars aice hi speed --days 1 4 7 --animate --timeseries \
-      --label "$IEINF_ID" --out-dir "$WD/results/$IEINF_ID/figs_seaice"
+  seams)
+    # SEAM_RUNS: run ids (results/<id>/validation_*_rank0000.zip); SEAM_STREAM, SEAM_CHANNELS
+    zips=(); for r in ${SEAM_RUNS:?SEAM_RUNS=\"run ids\"}; do zips+=("$WD"/results/$r/validation_chkpt*_rank0000.zip); done
+    uv run --offline python scripts/seam_diagnostic.py "${zips[@]}" --labels ${SEAM_RUNS} \
+      --stream "${SEAM_STREAM:-CICE}" --channels ${SEAM_CHANNELS:-aice hi} \
+      --out-dir "$WD/results/${SEAM_OUT:-${SEAM_RUNS%% *}}/seams"
     ;;
   *)
-    sed -n '2,35p' "$0"; exit 1 ;;
+    sed -n '2,30p' "$0"; exit 1 ;;
 esac

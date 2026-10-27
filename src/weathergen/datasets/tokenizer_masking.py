@@ -23,6 +23,7 @@ from weathergen.datasets.tokenizer_utils import (
     tokenize_space,
     tokenize_spacetime,
 )
+from weathergen.model.partition_of_unity import pu_target_coords
 
 
 def readerdata_to_torch(rdata: IOReaderData) -> IOReaderData:
@@ -157,7 +158,12 @@ class TokenizerMasking(Tokenizer):
         token_data,
         time_win: tuple,
         cell_mask,
+        pu_geo=None,
     ):
+        """
+        pu_geo: partition of unity only (model/partition_of_unity.py); when given, also returns
+        the encodings of the (point, cell) pairs as a third element.
+        """
         # create tokenization index
         (idxs_cells, idxs_cells_lens) = token_data
 
@@ -166,7 +172,7 @@ class TokenizerMasking(Tokenizer):
         )
 
         # TODO: split up
-        _, _, _, coords_local, coords_per_cell = tokenize_apply_mask_target(
+        _, _, coords, coords_local, coords_per_cell = tokenize_apply_mask_target(
             stream_info["stream_id"],
             self.hl_target,
             idxs_cells,
@@ -180,6 +186,18 @@ class TokenizerMasking(Tokenizer):
             self.hpy_nctrs_target,
             encode_times_target,
         )
+
+        if pu_geo is not None:
+            pu = pu_target_coords(
+                pu_geo,
+                coords,
+                coords_local,
+                coords_per_cell,
+                self.hpy_verts_rots_target,
+                self.hpy_verts_local_target,
+                self.hpy_nctrs_target,
+            )
+            return (coords_local, coords_per_cell, pu)
 
         return (coords_local, coords_per_cell)
 

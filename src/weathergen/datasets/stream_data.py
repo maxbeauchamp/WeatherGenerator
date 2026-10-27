@@ -30,6 +30,10 @@ def _pin_tensor(tensor: torch.Tensor) -> torch.Tensor:
     return tensor.pin_memory() if isinstance(tensor, torch.Tensor) else tensor
 
 
+# partition of unity fields of StreamData (one entry per output step, None when unused)
+_PU_FIELDS = ("target_coords_pu", "target_coords_pu_lens", "pu_point", "pu_weight")
+
+
 def _pin_tensor_list(tensor_list: list) -> list:
     """Pin all tensors in a list to CPU pinned memory.
 
@@ -118,6 +122,13 @@ class StreamData:
         self.fm_target = [None for _ in range(output_steps)]
         self.fm_prev = [None for _ in range(output_steps)]
 
+        # partition of unity (optional): encodings of the (point, cell) pairs, grouped by cell,
+        # their lengths per cell, the target point (index into target_coords) and the weight
+        self.target_coords_pu = [None for _ in range(output_steps)]
+        self.target_coords_pu_lens = [None for _ in range(output_steps)]
+        self.pu_point = [None for _ in range(output_steps)]
+        self.pu_weight = [None for _ in range(output_steps)]
+
     def pin_memory(self):
         """Pin all tensors in this StreamData object to CPU pinned memory"""
 
@@ -136,6 +147,10 @@ class StreamData:
         # flow matching tensors (None entries are kept as is)
         self.fm_target = _pin_tensor_list(getattr(self, "fm_target", []))
         self.fm_prev = _pin_tensor_list(getattr(self, "fm_prev", []))
+
+        # partition of unity tensors (None entries are kept as is)
+        for name in _PU_FIELDS:
+            setattr(self, name, _pin_tensor_list(getattr(self, name, [])))
 
         return self
 
@@ -173,6 +188,8 @@ class StreamData:
 
         self.fm_target = _mv(getattr(self, "fm_target", []))
         self.fm_prev = _mv(getattr(self, "fm_prev", []))
+        for name in _PU_FIELDS:
+            setattr(self, name, _mv(getattr(self, name, [])))
 
         return self
 
@@ -183,6 +200,16 @@ class StreamData:
         """
         self.fm_target[fstep] = x_target
         self.fm_prev[fstep] = x_prev
+
+    def add_pu_coords(self, fstep: int, coords_pu, coords_pu_lens, point_idx, weight) -> None:
+        """
+        Partition of unity: encodings of the (point, cell) pairs of output step fstep, grouped
+        by cell (lengths coords_pu_lens), with their target point and weight.
+        """
+        self.target_coords_pu[fstep] = coords_pu
+        self.target_coords_pu_lens[fstep] = coords_pu_lens
+        self.pu_point[fstep] = point_idx
+        self.pu_weight[fstep] = weight
 
     def add_source(
         self,

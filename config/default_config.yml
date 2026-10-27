@@ -82,15 +82,14 @@ flow_matching:
     num_steps: 16
     solver: heun               # heun | euler
     noise_correlation: 0.0     # AR(1) correlation of the noise across lead times
-# Decoder neighbourhood: relative-position attention bias (small MLP of the target point position
-# relative to each neighbour cell centre, zero-initialised) and optional second ring of cells, to
-# remove HEALPix seams. See src/weathergen/model/decoder_neighbourhood.py. Disabled by default.
-decoder_neighbourhood:
+# Partition of unity of the decoders: every target point is decoded as if it belonged to each
+# nearby cell and the outputs are blended with continuous weights (Wendland, on the cell
+# centres), to remove HEALPix seams. No parameters, but not the identity at start: needs a
+# decoder fine-tuning. See src/weathergen/model/partition_of_unity.py. Disabled by default.
+partition_of_unity:
   enabled: False
   streams: []                  # decoders using it; [] = all decoders
-  rings: 1                     # 1: 9 cells (as now) | 2: 25 cells (second ring closed at start)
-  hidden: 16                   # hidden size of the bias MLP
-  ring2_init_logit: -50.0      # initial logit of the second-ring cells (closed)
+  support: 1.0                 # support radius in units of the cell spacing, in [0.9, 1.2]
 # currently fixed to 1.0 (due to limitations with flex_attention and triton)
 forecast_att_dense_rate: 1.0
 

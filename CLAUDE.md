@@ -15,7 +15,7 @@ default** (no module created, original code path when off):
 | `xp_02_d5xirkmf_cice.md` CICE in `d5xirkmf` | `streams/earthgen3_cice/` | configs only |
 | `xp_03_forcing_reinjection.md` | `forcing_reinjection` | `model/forcing_injection.py`, `model/model.py` (`forward`, `inject_forcing`), `datasets/multi_stream_data_sampler.py` (`_build_forcing_samples`), `datasets/batch.py` |
 | `xp_04_flow_matching.md` | `flow_matching` | `model/flow_matching.py`, `model/model.py` (`predict_flow_matching`), sampler `_fm_values`, `datasets/stream_data.py`, `train/trainer.py` |
-| `xp_05_decoder_neighbourhood.md` | `decoder_neighbourhood` | `model/decoder_neighbourhood.py`, `model/engines.py`, `model/attention.py`, `model/model.py` |
+| `xp_05_decoder_partition_of_unity.md` | `partition_of_unity` | `model/partition_of_unity.py`, `model/model.py` (`predict_decoders`), `datasets/tokenizer_masking.py`, `datasets/stream_data.py` |
 
 **Docs live in `../WeatherGenerator-configs/docs/`:**
 - `seaice/README.md` is the index;
@@ -57,11 +57,13 @@ work, before committing.** Do not leave a feature, config or run undocumented.
 - New modules that are added to a pretrained model are **zero-initialised so that the model is
   exactly unchanged at start**, and keep their parameters directly on the module (not an
   `nn.Linear`), so that `reset_parameters()` on checkpoint loading keeps the zeros.
+  **Exception (owner's decision): the partition of unity (xp_05)** has no parameters but cannot
+  be the identity at start (the identity is the discontinuous limit); it needs a decoder fine-tuning.
 - Every feature has a non-regression check (`./run_cice_pipeline.sh reinj-check | fm-check |
-  dn-check`): zero-init feature vs original on the same dates, compared with
-  `scripts/compare_inference_zips.py`.
+  pu-check`): zero-init feature vs original on the same dates, compared with
+  `scripts/compare_inference_zips.py`. For `pu-check`: off == original, on = report the change at start.
 - Every feature has unit tests in `tests/test_<feature>.py`. Run them after any change:
-  `uv run --offline pytest -q tests/test_forcing_reinjection.py tests/test_flow_matching.py tests/test_decoder_neighbourhood.py`
+  `uv run --offline pytest -q tests/test_forcing_reinjection.py tests/test_flow_matching.py tests/test_partition_of_unity.py tests/test_seam_diagnostic.py`
 - Defaults in `config/default_config.yml` stay disabled.
 - Keep diffs to upstream files small and localised (this branch must stay mergeable).
 
@@ -90,14 +92,15 @@ work, before committing.** Do not leave a feature, config or run undocumented.
 CF=../WeatherGenerator-configs/config; WD=/e/scratch/weatherai/shared_work
 uv run --offline train_continue --from-run-id <run> --mini-epoch <N> --run-id <new> --config <cfg>
 uv run --offline inference --from-run-id <run> --mini-epoch <N> --run-id inf_<x> --config <cfg>
-./run_cice_pipeline.sh <step>            # check | ie-smoke | reinj-check | fm-check | dn-check | ...
+./run_cice_pipeline.sh <step>            # check | ie-smoke | reinj-check | fm-check | pu-check | ...
 bash slurm_submissions/submit_ice_era5.sh      # ice + ERA5 base (S1 -> S2)
 bash slurm_submissions/submit_ice_era5_fm.sh   # FM chain on ice_era5_s2
+bash slurm_submissions/submit_ice_era5_pu.sh   # partition of unity (+ FM) chain on ice_era5_s2
 ```
 
 Always pass `--mini-epoch N` (`_latest` exists only every 250 batches).
 
 ## Workflow
 
-Develop locally (VS Code + Claude Code) → `git push` → on JUPITER login node `git pull` → test on a
+Develop locally (VS Code + Claude Code; CPU tests in `.venv`, see `docs/seaice/runbook.md` §3) → `git push` → on JUPITER login node `git pull` → test on a
 GPU node. Lint: `ruff check` / `ruff format` as configured in the repo.

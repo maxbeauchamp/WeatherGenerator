@@ -24,11 +24,6 @@ from weathergen.model.attention import (
     MultiSelfAttentionHeadVarlen,
 )
 from weathergen.model.blocks import CrossAttentionBlock, OriginalPredictionBlock, SelfAttentionBlock
-from weathergen.model.decoder_neighbourhood import (
-    RelativePositionBias,
-    get_decoder_neighbourhood_config,
-    uses_neighbourhood,
-)
 from weathergen.model.embeddings import (
     StreamEmbedLinear,
     StreamEmbedTransformer,
@@ -728,23 +723,6 @@ class TargetPredictionEngineClassic(nn.Module):
         self.softcap = softcap
         self.tte = torch.nn.ModuleList()
 
-        # optional relative-position attention bias (decoder_neighbourhood), one per cross-attention
-        dn = get_decoder_neighbourhood_config(cf)
-        self.rel_pos_bias = None
-        if uses_neighbourhood(dn, stream_config["name"]):
-            num_heads = stream_config["target_readout"]["num_heads"]
-            self.rel_pos_bias = torch.nn.ModuleList(
-                [
-                    RelativePositionBias(
-                        num_heads,
-                        dn["hidden"],
-                        f"RelativePositionBias_{stream_config['name']}_{i}",
-                        dn["ring2_init_logit"],
-                    )
-                    for i in range(len(self.dims_embed) - 1)
-                ]
-            )
-
         for i in range(len(self.dims_embed) - 1):
             # Multi-Cross Attention Head
             self.tte.append(
@@ -797,38 +775,16 @@ class TargetPredictionEngineClassic(nn.Module):
                 )
             )
 
-    def forward(self, latent, output, latent_lens, output_lens, coordinates, attn_geo=None):
-        """
-        attn_geo: decoder_neighbourhood only, (feats (Nq, K, 3), pad_q (Nq, K), slot_ring (K,),
-        k_onehot (Nkv, K)); None: original decoder.
-        """
+    def forward(self, latent, output, latent_lens, output_lens, coordinates):
         tc_tokens = output
         tcs_lens = output_lens
         tokens_stream = latent
         tokens_lens = latent_lens
         tcs_aux = coordinates
-        assert (attn_geo is None) == (self.rel_pos_bias is None), (
-            f"{self.name}: decoder_neighbourhood geometry and bias modules must come together"
-        )
 
-        i_cross = 0
         for ib, block in enumerate(self.tte):
             if self.cf.pred_self_attention and ib % 3 == 1:
                 tc_tokens = checkpoint(block, tc_tokens, tcs_lens, tcs_aux, use_reentrant=False)
-            elif isinstance(block, MultiCrossAttentionHeadVarlen) and attn_geo is not None:
-                feats, pad_q, slot_ring, k_onehot = attn_geo
-                bias = self.rel_pos_bias[i_cross](feats, pad_q, slot_ring)
-                i_cross += 1
-                tc_tokens = checkpoint(
-                    block,
-                    tc_tokens,
-                    tokens_stream,
-                    tcs_lens,
-                    tokens_lens,
-                    tcs_aux,
-                    (bias, k_onehot),
-                    use_reentrant=False,
-                )
             else:
                 tc_tokens = checkpoint(
                     block,
