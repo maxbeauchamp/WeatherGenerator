@@ -33,6 +33,7 @@ Examples (from the WeatherGenerator root):
 from __future__ import annotations
 
 import argparse
+import contextlib
 import pathlib
 import sys
 
@@ -129,6 +130,16 @@ def load_netcdf(path: pathlib.Path, var: str) -> dict:
     }
 
 
+@contextlib.contextmanager
+def _quiet():
+    """Silence numpy RuntimeWarnings (all-NaN slices on land / outside the domain)."""
+    import warnings  # noqa: PLC0415
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        yield
+
+
 class ZarrSource:
     """Raw inference output (.zip / .zarr). Points of every step / kind / sample are matched
     (nearest neighbour, as in wg_zip2netcdf) onto one reference point list, so that the polar
@@ -184,7 +195,8 @@ class ZarrSource:
                 if kind == "pred" and self.member is not None:
                     arr[s][:, j[ok]] = dd[:, :, self.member].T
                 else:
-                    arr[s][:, j[ok]] = np.nanmean(dd, axis=2).T  # mean over ens
+                    with np.errstate(all="ignore"), _quiet():
+                        arr[s][:, j[ok]] = np.nanmean(dd, axis=2).T  # mean over ens (NaN: land)
                 if kind == "pred" and ens is not None:
                     ens[s][:, j[ok], :] = dd.transpose(1, 0, 2)
             fields[kind] = arr
@@ -212,13 +224,20 @@ class ZarrSource:
             pred, truth = get("pred", var), get("truth", var)
         scale = VARS.get(var, {}).get("scale", 1.0)
         has_a = "aice" in ch
+        ens = d["fields"]["ens"]
+        pred_ens = None
+        if ens is not None:
+            if var == "speed":
+                pred_ens = np.hypot(ens[:, ch.index("uvel")], ens[:, ch.index("vvel")]) * scale
+            else:
+                pred_ens = ens[:, ch.index(var)] * scale
         return {
             "lat": self.ref[0], "lon": self.ref[1],
             "pred": pred * scale, "truth": truth * scale,
             "aice_pred": get("pred", "aice") if has_a else None,
             "aice_truth": get("truth", "aice") if has_a else None,
             "valid_time": d["valid_time"], "lead_h": d["lead_h"], "ref_time": d["ref_time"],
-            "sample": sample, "nens": d["nens"],
+            "sample": sample, "nens": d["nens"], "pred_ens": pred_ens,
             "aice_ens": (d["fields"]["ens"][:, ch.index("aice")]
                          if has_a and d["fields"]["ens"] is not None else None),
         }
@@ -502,8 +521,9 @@ def main():
     ap.add_argument("--member", type=int, default=None,
                     help="plot this ensemble member instead of the ensemble mean (zarr input)")
     ap.add_argument("--ens", action="store_true",
-                    help="extra ensemble figure (aice): ice-edge probability, spread, error of the "
-                         "mean; spread/RMSE per lead time (zarr input, >= 2 members)")
+                    help="ensemble figures (zarr input, >= 2 members): for every --vars, a 2x3 figure "
+                         "(mean, member 0, member 1 / spread, CICE, mean - CICE), also animated with "
+                         "--animate; for aice also ice-edge probability and spread/RMSE per lead time")
     a = ap.parse_args()
     plt.rcParams.update(STYLE)
     a.out_dir.mkdir(parents=True, exist_ok=True)
@@ -511,8 +531,13 @@ def main():
         print("cartopy not found: maps without coastlines (run in the WeatherGenerator env)")
 
     grid = None
+    import re  # noqa: PLC0415
+
     for f in sorted(a.files):
         fmt = detect_format(f, a.format)
+        # several rank files (one per GPU): their samples have the same local index -> tag files
+        m_rank = re.search(r"rank(\d+)", f.name)
+        tag = f"_r{int(m_rank.group(1)):02d}" if (len(a.files) > 1 and m_rank) else ""
         if fmt == "zarr":
             src = ZarrSource(f, a.stream, member=a.member, keep_ens=a.ens)
             samples = a.samples if a.samples else src.samples
@@ -523,12 +548,14 @@ def main():
         for job in jobs:
             for var in a.vars:
                 d = job(var)
+                d["tag"] = tag
                 if grid is None:  # same native points for all inputs: build the mapping once
                     grid = PolarGrid(d["lat"], d["lon"], a.lat_min, a.res_km)
                 render(d, var, grid, a, f)
-                if a.ens and var == "aice":
-                    render_ens(d, grid, a)
-                    render_ens_anim(d, grid, a)
+                if a.ens:
+                    if var == "aice":
+                        render_ens(d, grid, a)
+                    render_ens_anim(d, var, grid, a)
 
 def render(d, var, grid, a, f):
     fr = Frame(d, var, grid, a.timeseries, a.label)
@@ -538,7 +565,7 @@ def render(d, var, grid, a, f):
         fr.axes[0].set_title(f"WG, member {mem}", pad=4)
     elif nens > 1:
         fr.axes[0].set_title(f"WG, mean of {nens}", pad=4)
-    stem = a.out_dir / (f"{a.label + '_' if a.label else ''}{var}_s{d['sample']:04d}"
+    stem = a.out_dir / (f"{a.label + '_' if a.label else ''}{var}{d.get('tag', '')}_s{d['sample']:04d}"
                         + (f"_m{mem:02d}" if mem is not None else ""))
     lead_days = np.rint(d["lead_h"] / 24.0).astype(int)
     for day in a.days:
@@ -573,7 +600,7 @@ def render_ens(d, grid, a):
         print("--ens: skipped (needs aice and >= 2 members)")
         return
     nm = E.shape[-1]
-    stem = a.out_dir / f"{a.label + '_' if a.label else ''}ens_aice_s{d['sample']:04d}"
+    stem = a.out_dir / f"{a.label + '_' if a.label else ''}ens_aice{d.get('tag', '')}_s{d['sample']:04d}"
     lead = d["lead_h"] / 24.0
     lead_days = np.rint(lead).astype(int)
     rows = []
@@ -640,35 +667,59 @@ def render_ens(d, grid, a):
 
 
 class EnsFrame:
-    """2 x 3 ensemble figure, updated in place for each lead time (stills and animation)."""
+    """2 x 3 ensemble figure for one variable, updated in place for each lead time:
+    WG mean | member 0 | member 1  /  spread | CICE | mean - CICE  (+ time series)."""
 
-    def __init__(self, d, grid, a):
-        import warnings  # noqa: PLC0415
-
-        E, T = d["aice_ens"], d["aice_truth"]
-        self.d, self.g = d, grid
+    def __init__(self, d, var, grid, a):
+        E, T = d["pred_ens"], d["truth"]
+        AE, AT = d.get("aice_ens"), d.get("aice_truth")
+        self.d, self.g, self.var = d, grid, var
         self.n, self.nm = E.shape[0], E.shape[-1]
         m1 = 1 if self.nm > 1 else 0
         area = grid.area
+        spec = VARS.get(var, dict(label=var, units="", vmin=np.nanpercentile(T, 1),
+                                  vmax=np.nanpercentile(T, 99), cmap="viridis", dmax=np.nanstd(T)))
+        self.spec = spec
+        # time series: extent for aice, volume for thicknesses, area mean otherwise
+        if var == "aice":
+            self.ts_label = "Extent (10$^6$ km$^2$)"
 
-        def ext(img):
-            return float(area[np.isfinite(img) & (img >= 0.15)].sum()) / 1e12
+            def tsval(img, aimg):
+                return float(area[np.isfinite(img) & (img >= 0.15)].sum()) / 1e12
+        elif var in ("hi", "hs"):
+            self.ts_label = ("Ice" if var == "hi" else "Snow") + " volume (10$^3$ km$^3$)"
 
-        self.F, self.EXT, self.MET = [], [], []
+            def tsval(img, aimg):
+                ok = np.isfinite(img)
+                return float((img[ok] * area[ok]).sum()) / 1e12
+        else:
+            self.ts_label = f"Mean {spec['label'].lower()} (ice area)"
+
+            def tsval(img, aimg):
+                ok = np.isfinite(img) & (np.nan_to_num(aimg) >= 0.15 if aimg is not None else True)
+                return float(np.average(img[ok], weights=area[ok])) if ok.any() else np.nan
+
+        self.F, self.TSV, self.MET = [], [], []
         for s in range(self.n):
             e = E[s].astype(np.float64)
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", RuntimeWarning)
+            with np.errstate(all="ignore"), _quiet():
                 mean = np.nanmean(e, axis=1)
                 spread = np.nanstd(e, axis=1, ddof=1)
             f = {k: grid.remap(v).astype(np.float32) for k, v in
                  (("mean", mean), ("m0", e[:, 0]), ("m1", e[:, m1]), ("spread", spread), ("truth", T[s]))}
             f["dev"] = f["mean"] - f["truth"]
+            if AE is not None and AT is not None:  # 15 % ice edges, from aice
+                ae = AE[s].astype(np.float64)
+                with np.errstate(all="ignore"), _quiet():
+                    f["a_mean"] = grid.remap(np.nanmean(ae, axis=1))
+                f["a_m0"], f["a_m1"], f["a_truth"] = (grid.remap(v) for v in (ae[:, 0], ae[:, m1], AT[s]))
+            else:
+                f["a_mean"] = f["a_m0"] = f["a_m1"] = f["a_truth"] = None
             self.F.append(f)
-            self.EXT.append((ext(f["truth"]), ext(f["mean"]),
-                             [ext(grid.remap(e[:, k])) for k in range(self.nm)]))
-            self.MET.append(ice_metrics(f["mean"], f["truth"], f["mean"], f["truth"], area, "aice"))
-        self.m1 = m1
+            mem_a = ([grid.remap(AE[s][:, k]) for k in range(self.nm)] if AE is not None else [None] * self.nm)
+            self.TSV.append((tsval(f["truth"], f["a_truth"]), tsval(f["mean"], f["a_mean"]),
+                             [tsval(grid.remap(e[:, k]), mem_a[k]) for k in range(self.nm)]))
+            self.MET.append(ice_metrics(f["mean"], f["truth"], f["a_mean"], f["a_truth"], area, var))
 
         # ---- layout in inches ------------------------------------------------------------
         W, M, GAP, HEAD, TT, CB = 7.2, 2.25, 0.15, 0.80, 0.24, 0.45
@@ -682,14 +733,13 @@ class EnsFrame:
         x0 = (W - 3 * M - 2 * GAP) / 2
         y2 = TS + CB
         y1 = y2 + M + TT + CB
-        spec = VARS["aice"]
-        ice = dict(cmap=spec["cmap"], vmin=0, vmax=1)
+        main = dict(cmap=spec["cmap"], vmin=spec["vmin"], vmax=spec["vmax"])
         layout = [  # key, title, imshow kwargs, row, col
-            ("mean", f"WG, mean of {self.nm}", ice, 0, 0),
-            ("m0", "WG, member 0", ice, 0, 1),
-            ("m1", f"WG, member {m1}", ice, 0, 2),
-            ("spread", "Ensemble spread (std)", dict(cmap="viridis", vmin=0, vmax=0.3), 1, 0),
-            ("truth", "CICE (truth)", ice, 1, 1),
+            ("mean", f"WG, mean of {self.nm}", main, 0, 0),
+            ("m0", "WG, member 0", main, 0, 1),
+            ("m1", f"WG, member {m1}", main, 0, 2),
+            ("spread", "Ensemble spread (std)", dict(cmap="viridis", vmin=0, vmax=0.6 * spec["dmax"]), 1, 0),
+            ("truth", "CICE (truth)", main, 1, 1),
             ("dev", "WG mean − CICE", dict(cmap=DIFF, vmin=-spec["dmax"], vmax=spec["dmax"]), 1, 2),
         ]
         nan = np.full(grid.shape, np.nan)
@@ -701,45 +751,58 @@ class EnsFrame:
             decorate(ax, grid)
             self.ax[key] = ax
 
-        def cbar(key, x, y, w, label, pct=False, extend="neither"):
+        pct = var == "aice"
+        u = f" ({spec['units']})" if spec.get("units") else ""
+
+        def cbar(key, x, y, w, label, extend):
             cax = self.fig.add_axes(box(x, y, w, 0.075))
             cb = self.fig.colorbar(self.im[key], cax=cax, orientation="horizontal", extend=extend)
             cb.set_label(label, labelpad=1, fontsize=7.5)
             cb.outline.set_linewidth(0.4)
             cb.ax.tick_params(length=2, width=0.4, labelsize=6.5, pad=1)
-            if pct:
+            if pct and key in ("mean", "truth"):
                 cb.ax.xaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0, decimals=0))
 
-        cbar("mean", x0 + 0.25, y1 - 0.2, 3 * M + 2 * GAP - 0.5, spec["label"], pct=True)
-        cbar("spread", x0 + 0.25, y2 - 0.2, M - 0.5, "Spread", extend="max")
-        cbar("truth", x0 + (M + GAP) + 0.25, y2 - 0.2, M - 0.5, "Concentration", pct=True)
-        cbar("dev", x0 + 2 * (M + GAP) + 0.25, y2 - 0.2, M - 0.5, "Difference", extend="both")
+        ext_main = "neither" if var == "aice" else "max"
+        cbar("mean", x0 + 0.25, y1 - 0.2, 3 * M + 2 * GAP - 0.5, spec["label"] + u, ext_main)
+        cbar("spread", x0 + 0.25, y2 - 0.2, M - 0.5, "Spread" + u, "max")
+        cbar("truth", x0 + (M + GAP) + 0.25, y2 - 0.2, M - 0.5, "CICE" + u, ext_main)
+        cbar("dev", x0 + 2 * (M + GAP) + 0.25, y2 - 0.2, M - 0.5, "Difference" + u, "both")
 
         self.suptitle = self.fig.text(x0 / W, 1 - 0.08 / H, "", ha="left", va="top", fontsize=10.5,
                                       weight="bold")
         self.subtitle = self.fig.text(x0 / W, 1 - 0.36 / H, "", ha="left", va="top", fontsize=7.5,
                                       color="#555")
-        self.fig.text(1 - x0 / W, 1 - 0.08 / H, a.label, ha="right", va="top", fontsize=7, color="#888")
+        self.fig.text(1 - x0 / W, 1 - 0.08 / H, a.label + d.get("tag", ""), ha="right", va="top",
+                      fontsize=7, color="#888")
         self.contours = []
 
         self.ts = a.timeseries
         if self.ts:
             lead = d["lead_h"] / 24.0
             tax = self.fig.add_axes(box(x0 + 0.45, 0.32, 3 * M + 2 * GAP - 0.55, TS - 0.62))
-            self.mem_lines = [tax.plot([], [], color="#ff8c00", lw=0.6, alpha=0.35,
-                                       label="members" if k == 0 else None)[0] for k in range(self.nm)]
+            from matplotlib.patches import Patch  # noqa: PLC0415
+
+            self.tax, self.band = tax, None
+            # member spread around the ensemble mean: envelope (min - max) of the member values
+            self.lo = np.array([np.nanmin(ms) for _, _, ms in self.TSV])
+            self.hi = np.array([np.nanmax(ms) for _, _, ms in self.TSV])
             self.mean_line = tax.plot([], [], color="#ff8c00", lw=1.4, marker="o", ms=2.5, label="WG mean")[0]
             self.true_line = tax.plot([], [], color="#222222", lw=1.4, marker="o", ms=2.5, label="CICE")[0]
-            allv = np.array([v for t, m, ms in self.EXT for v in (t, m, *ms)])
-            pad = 0.08 * (allv.max() - allv.min() + 1e-9)
+            allv = np.array([v for (t, m, _), lo, hi in zip(self.TSV, self.lo, self.hi)
+                             for v in (t, m, lo, hi) if np.isfinite(v)])
             tax.set_xlim(lead.min() - 0.3, lead.max() + 0.3)
-            tax.set_ylim(allv.min() - pad, allv.max() + pad)
+            if allv.size:
+                pad = 0.08 * (allv.max() - allv.min() + 1e-9)
+                tax.set_ylim(allv.min() - pad, allv.max() + pad)
             tax.set_xlabel("Lead time (days)", labelpad=1)
-            tax.set_ylabel("Extent (10$^6$ km$^2$)", labelpad=2)
+            tax.set_ylabel(self.ts_label, labelpad=2)
             tax.spines[["top", "right"]].set_visible(False)
             tax.tick_params(length=2, width=0.4, labelsize=7)
             tax.grid(alpha=0.25, lw=0.4)
-            tax.legend(frameon=False, fontsize=6.5, loc="best", ncol=3)
+            handles = [self.true_line, self.mean_line,
+                       Patch(facecolor="#ff8c00", alpha=0.3, edgecolor="none", label=f"spread of the {self.nm} members (min–max)")]
+            tax.legend(handles=handles, frameon=False, fontsize=6.5, loc="best", ncol=3)
             self.lead = lead
 
     def draw(self, s):
@@ -750,37 +813,44 @@ class EnsFrame:
             c.remove()
         cs = []
         for k in ("mean", "m0", "m1"):
-            cs += [edge(self.ax[k], f[k], g, "#ff8c00", "solid"), edge(self.ax[k], f["truth"], g, "#ffffff", "dashed")]
-        cs += [edge(self.ax["spread"], f["truth"], g, "#ffffff", "dashed"),
-               edge(self.ax["truth"], f["truth"], g, "#ffffff", "dashed"),
-               edge(self.ax["dev"], f["mean"], g, "#ff8c00", "solid"),
-               edge(self.ax["dev"], f["truth"], g, "#111111", "dashed")]
+            cs += [edge(self.ax[k], f["a_" + k], g, "#ff8c00", "solid"),
+                   edge(self.ax[k], f["a_truth"], g, "#ffffff", "dashed")]
+        cs += [edge(self.ax["spread"], f["a_truth"], g, "#ffffff", "dashed"),
+               edge(self.ax["truth"], f["a_truth"], g, "#ffffff", "dashed"),
+               edge(self.ax["dev"], f["a_mean"], g, "#ff8c00", "solid"),
+               edge(self.ax["dev"], f["a_truth"], g, "#111111", "dashed")]
         self.contours = [c for c in cs if c is not None]
         vt = np.datetime_as_string(self.d["valid_time"][s], unit="D")
         lead = self.d["lead_h"][s] / 24.0
         rt = self.d["ref_time"]
         ref = np.datetime_as_string(rt, unit="D") if rt is not None and not np.isnat(rt) else "?"
-        t, m, ms = self.EXT[s]
+        t, m, ms = self.TSV[s]
         met = self.MET[s]
-        self.suptitle.set_text(f"Sea-ice concentration, {self.nm}-member ensemble  ·  valid {vt}")
+        fmt = "{:.3f}" if self.spec["vmax"] <= 1.5 else "{:.2f}"
+        self.suptitle.set_text(f"{self.spec['label']}, {self.nm}-member ensemble  ·  valid {vt}")
         self.subtitle.set_text(
-            f"forecast from {ref}, lead +{lead:.0f} d  ·  15 % edge: WG orange, CICE dashed\n"
-            f"extent (10$^6$ km$^2$): CICE {t:.2f}, mean {m:.2f}, members {min(ms):.2f}–{max(ms):.2f}  ·  "
-            f"mean: RMSE {met['rmse']:.3f}, IIEE {met.get('iiee', np.nan):.2f}")
+            f"forecast from {ref}, lead +{lead:.0f} d  ·  15 % ice edge: WG orange, CICE dashed\n"
+            f"{self.ts_label}: CICE {t:.2f}, WG mean {m:.2f}, members {np.nanmin(ms):.2f}–{np.nanmax(ms):.2f}  ·  "
+            f"mean: RMSE {fmt.format(met['rmse'])}"
+            + (f", IIEE {met['iiee']:.2f}×10$^6$ km$^2$" if "iiee" in met else ""))
         if self.ts:
             x = self.lead[: s + 1]
-            for k, ln in enumerate(self.mem_lines):
-                ln.set_data(x, [e[2][k] for e in self.EXT[: s + 1]])
-            self.mean_line.set_data(x, [e[1] for e in self.EXT[: s + 1]])
-            self.true_line.set_data(x, [e[0] for e in self.EXT[: s + 1]])
+            mean = np.array([e[1] for e in self.TSV[: s + 1]])
+            if self.band is not None:
+                self.band.remove()
+            self.band = self.tax.fill_between(x, self.lo[: s + 1], self.hi[: s + 1], color="#ff8c00",
+                                              alpha=0.3, lw=0, zorder=1)
+            self.mean_line.set_data(x, mean)
+            self.true_line.set_data(x, [e[0] for e in self.TSV[: s + 1]])
         return list(self.im.values())
 
 
-def render_ens_anim(d, grid, a):
-    if d.get("aice_ens") is None or d.get("aice_truth") is None or d.get("nens", 1) < 2:
+def render_ens_anim(d, var, grid, a):
+    if d.get("pred_ens") is None or d.get("nens", 1) < 2:
+        print(f"--ens: {var} skipped (needs >= 2 members)")
         return
-    fr = EnsFrame(d, grid, a)
-    stem = a.out_dir / f"{a.label + '_' if a.label else ''}ens6_aice_s{d['sample']:04d}"
+    fr = EnsFrame(d, var, grid, a)
+    stem = a.out_dir / f"{a.label + '_' if a.label else ''}ens6_{var}{d.get('tag', '')}_s{d['sample']:04d}"
     lead_days = np.rint(d["lead_h"] / 24.0).astype(int)
     for day in a.days:
         idx = np.flatnonzero(lead_days == day)
@@ -799,7 +869,6 @@ def render_ens_anim(d, grid, a):
             anim.save(out, writer=animation.PillowWriter(fps=a.fps), dpi=110)
         print("saved", out)
     plt.close(fr.fig)
-
 
 if __name__ == "__main__":
     main()

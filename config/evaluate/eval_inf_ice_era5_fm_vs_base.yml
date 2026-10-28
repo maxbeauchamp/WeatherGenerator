@@ -1,0 +1,78 @@
+evaluation:
+  metrics:
+  - rmse
+  score_plots:
+  - lead_time
+  summary_dir: /e/scratch/weatherai/shared_work/results/inf_ice_era5_fm/plots
+  print_summary: false
+  log_scale: false
+  add_grid: false
+run_ids:
+  inf_ice_era5_fm:
+    label: ice + ERA5, flow matching (8 members)
+    results_base_dir: /e/scratch/weatherai/shared_work/results/inf_ice_era5_fm/
+    rank: all
+    streams:
+      CICE:
+        persistence: true
+        regions:
+        - arctic
+        channels:
+        - aice
+        - hi
+        - hs
+        - uvel
+        - vvel
+        evaluation:
+          forecast_step: all
+          sample: all
+          ensemble: all
+        plotting:
+          sample:
+          - 0
+          forecast_step:
+          - 1
+          - 4
+          - 7
+          data_plots:
+          - maps:
+              predictions:
+              - image
+              target:
+              - image
+              bias:
+              - image
+  inf_ice_era5_base:
+    label: ice + ERA5, deterministic base
+    results_base_dir: /e/scratch/weatherai/shared_work/results/inf_ice_era5_base/
+    rank: all
+    streams:
+      CICE:
+        persistence: true
+        regions:
+        - arctic
+        channels:
+        - aice
+        - hi
+        - hs
+        - uvel
+        - vvel
+        evaluation:
+          forecast_step: all
+          sample: all
+          ensemble: all
+        plotting:
+          sample:
+          - 0
+          forecast_step:
+          - 1
+          - 4
+          - 7
+          data_plots:
+          - maps:
+              predictions:
+              - image
+              target:
+              - image
+              bias:
+              - image
