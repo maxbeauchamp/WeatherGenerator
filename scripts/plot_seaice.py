@@ -331,6 +331,51 @@ def fixed_ticks(cb, vmin, vmax, n=5):
     cb.set_ticks(np.linspace(vmin, vmax, n))
 
 
+def save_animation(fig, draw, n, stem, fps):
+    """mp4 with ffmpeg; otherwise a GIF with ONE palette shared by all frames.
+    (matplotlib's PillowWriter quantises every frame to its own 256-colour palette: the same
+    value then gets a different colour from frame to frame, colour bars included.)"""
+    if animation.writers.is_available("ffmpeg"):
+        out = f"{stem}.mp4"
+        anim = animation.FuncAnimation(fig, draw, frames=range(n), blit=False)
+        anim.save(out, writer=animation.FFMpegWriter(fps=fps, bitrate=6000,
+                                                     extra_args=["-pix_fmt", "yuv420p"]), dpi=200)
+        return out
+    from PIL import Image  # noqa: PLC0415
+
+    frames = []
+    for s in range(n):
+        draw(s)
+        fig.canvas.draw()
+        frames.append(Image.fromarray(np.asarray(fig.canvas.buffer_rgba())[..., :3].copy()))
+    # global palette from (a subsample of) all frames, stacked
+    step = max(1, n // 12)
+    sub = [f.reduce(2) for f in frames[::step]]
+    w, h = sub[0].size
+    mosaic = Image.new("RGB", (w, h * len(sub)))
+    for i, f in enumerate(sub):
+        mosaic.paste(f, (0, i * h))
+    # palette = the colour maps of the figure (sampled finely, so maps and colour bars keep
+    # their true colours) + the most frequent other colours (land, text, edges, curves)
+    cmaps = {im.cmap.name: im.cmap for ax in fig.axes for im in ax.get_images()}
+    per = max(24, min(64, 150 // max(1, len(cmaps))))
+    cols = [tuple(int(round(255 * c)) for c in cm(x)[:3]) for cm in cmaps.values()
+            for x in np.linspace(0, 1, per)]
+    fixed = ["#ffffff", "#000000", "#222222", "#111111", "#333333", "#4a4a4a", "#555555", "#888888",
+             "#bbbbbb", "#e6e6e6", "#ff8c00", "#ffaa4c", "#ffd1a3", "#ffe8cc", LAND, OCEAN_BG]
+    cols = [tuple(int(round(255 * c)) for c in mcolors.to_rgb(h)) for h in fixed] + cols
+    rest = 255 - len(cols)
+    extra = mosaic.quantize(colors=rest, method=Image.Quantize.MEDIANCUT).getpalette()[: 3 * rest]
+    flat = [v for c in cols for v in c] + extra
+    pal = Image.new("P", (1, 1))
+    pal.putpalette(flat + [0] * (768 - len(flat)))
+    q = [f.quantize(palette=pal, dither=Image.Dither.NONE) for f in frames]
+    out = f"{stem}.gif"
+    q[0].save(out, save_all=True, append_images=q[1:], duration=int(1000 / fps), loop=0,
+              optimize=False, disposal=1)
+    return out
+
+
 def make_axes(fig, rect, grid: PolarGrid):
     if HAS_CARTOPY:
         ax = fig.add_axes(rect, projection=grid.crs)
@@ -586,15 +631,7 @@ def render(d, var, grid, a, f):
             fr.fig.savefig(f"{stem}_d{day:02d}.pdf")
         print("saved", f"{stem}_d{day:02d}.png")
     if a.animate:
-        n = d["pred"].shape[0]
-        anim = animation.FuncAnimation(fr.fig, fr.draw, frames=range(n), blit=False)
-        if animation.writers.is_available("ffmpeg"):
-            out = f"{stem}.mp4"
-            anim.save(out, writer=animation.FFMpegWriter(fps=a.fps, bitrate=6000,
-                                                         extra_args=["-pix_fmt", "yuv420p"]), dpi=200)
-        else:
-            out = f"{stem}.gif"
-            anim.save(out, writer=animation.PillowWriter(fps=a.fps), dpi=120)
+        out = save_animation(fr.fig, fr.draw, d["pred"].shape[0], stem, a.fps)
         print("saved", out)
     plt.close(fr.fig)
 
@@ -872,14 +909,7 @@ def render_ens_anim(d, var, grid, a):
             fr.fig.savefig(f"{stem}_d{day:02d}.png")
             print("saved", f"{stem}_d{day:02d}.png")
     if a.animate:
-        anim = animation.FuncAnimation(fr.fig, fr.draw, frames=range(fr.n), blit=False)
-        if animation.writers.is_available("ffmpeg"):
-            out = f"{stem}.mp4"
-            anim.save(out, writer=animation.FFMpegWriter(fps=a.fps, bitrate=6000,
-                                                         extra_args=["-pix_fmt", "yuv420p"]), dpi=200)
-        else:
-            out = f"{stem}.gif"
-            anim.save(out, writer=animation.PillowWriter(fps=a.fps), dpi=110)
+        out = save_animation(fr.fig, fr.draw, fr.n, stem, a.fps)
         print("saved", out)
     plt.close(fr.fig)
 
