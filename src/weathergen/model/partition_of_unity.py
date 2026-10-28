@@ -201,22 +201,31 @@ class PUEncoding:
     """
 
     def __init__(self, healpix_level: int):
+        # tables built at first use: the model is created under torch.device("meta") with FSDP
+        self.healpix_level = healpix_level
+        self._cpu = None
+        self._on = {}
+
+    def _build(self):
         from weathergen.datasets.tokenizer import Tokenizer  # noqa: PLC0415
         from weathergen.datasets.utils import vecs_to_rots  # noqa: PLC0415
 
-        tok = Tokenizer(healpix_level)
-        self.rots = torch.stack(tok.hpy_verts_rots_target)  # (5, N, 3, 3)
-        self.verts_local = tok.hpy_verts_local_target.to(torch.float32)  # (N, 5, 12)
-        # as in locs_to_ctr_coords
-        self.nrots = torch.stack(
-            [vecs_to_rots(c).to(torch.float32) for c in tok.hpy_nctrs_target]
-        )  # (8, N, 3, 3)
-        self._on = {}
+        with torch.device("cpu"):
+            tok = Tokenizer(self.healpix_level)
+            rots = torch.stack(tok.hpy_verts_rots_target)  # (5, N, 3, 3)
+            verts_local = tok.hpy_verts_local_target.to(torch.float32)  # (N, 5, 12)
+            # as in locs_to_ctr_coords
+            nrots = torch.stack(
+                [vecs_to_rots(c).to(torch.float32) for c in tok.hpy_nctrs_target]
+            )  # (8, N, 3, 3)
+        return rots, verts_local, nrots
 
     def _tables(self, device):
+        if self._cpu is None:
+            self._cpu = self._build()
         key = str(device)
         if key not in self._on:
-            self._on[key] = tuple(t.to(device) for t in (self.rots, self.verts_local, self.nrots))
+            self._on[key] = tuple(t.to(device) for t in self._cpu)
         return self._on[key]
 
     def encode(self, attrs: torch.Tensor, xyz: torch.Tensor, cell: torch.Tensor) -> torch.Tensor:

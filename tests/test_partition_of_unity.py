@@ -310,6 +310,20 @@ def test_pair_encoding_equals_the_tokenizer(geo, tok):
     assert pts.dtype == torch.float32 and pts.shape == (len(coords), 3)
 
 
+def test_pair_encoding_created_on_meta_device(geo, tok):
+    """With FSDP the model is created under torch.device("meta"): PUEncoding must still build
+    real tables (at first use, on the CPU)."""
+    from weathergen.model.partition_of_unity import PUEncoding  # noqa: PLC0415
+
+    with torch.device("meta"):
+        pu_enc = PUEncoding(HL)
+    _, _, xyz, cell = random_points(500, seed=9)
+    coords, enc, per_cell, _, _ = encode_points(tok, xyz, cell)
+    ref, _, point_idx, _, pair_cell, pts = pair_encodings(geo, tok, coords, enc, per_cell)
+    out = pu_enc.encode(enc[point_idx, :-99], pts[point_idx], pair_cell)
+    assert out.device.type == "cpu" and torch.equal(out, ref)
+
+
 def test_pu_pairs_own_cell_is_original(geo, tok):
     _, _, xyz, cell = random_points(3000, seed=6)
     coords, enc, per_cell, cell_sorted, _ = encode_points(tok, xyz, cell)
