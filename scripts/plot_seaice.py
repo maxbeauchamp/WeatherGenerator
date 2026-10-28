@@ -87,7 +87,7 @@ STYLE = {
     "axes.titleweight": "bold",
     "figure.dpi": 150,
     "savefig.dpi": 300,
-    "savefig.bbox": "tight",
+    "savefig.bbox": None,  # fixed layout: every PNG / frame has the same size and colour bars
     "savefig.pad_inches": 0.04,
 }
 
@@ -326,6 +326,11 @@ def ice_metrics(pred_img, truth_img, aice_p, aice_t, area, var):
 # ------------------------------------------------------------------------------------------
 # Figure
 # ------------------------------------------------------------------------------------------
+def fixed_ticks(cb, vmin, vmax, n=5):
+    """Same ticks on every colour bar of a quantity, in every figure."""
+    cb.set_ticks(np.linspace(vmin, vmax, n))
+
+
 def make_axes(fig, rect, grid: PolarGrid):
     if HAS_CARTOPY:
         ax = fig.add_axes(rect, projection=grid.crs)
@@ -385,8 +390,8 @@ class Frame:
                                   dmax=np.nanstd(data["truth"])))
         self.spec = spec
         # ---- fixed layout in inches (no overlaps, identical for every frame) ----------
-        W, M, GAP = 7.2, 2.25, 0.15           # figure width, map size, gap between maps
-        HEAD, MET, CB, TS = 0.62, 0.22, 0.50, (1.15 if timeseries else 0.0)
+        W, M, GAP = 7.6, 2.25, 0.15           # figure width, map size, gap between maps
+        HEAD, MET, CB, TS = 0.62, 0.22, 0.50, (1.45 if timeseries else 0.0)
         H = HEAD + 0.22 + M + MET + CB + TS + 0.05
         self.fig = plt.figure(figsize=(W, H), facecolor="white")
 
@@ -426,12 +431,14 @@ class Frame:
         c1.set_label(spec["label"] + u, labelpad=1, fontsize=7.5)
         c2 = self.fig.colorbar(self.im[2], cax=cax2, orientation="horizontal", extend="both")
         c2.set_label("Difference" + u, labelpad=1, fontsize=7.5)
+        fixed_ticks(c1, spec["vmin"], spec["vmax"])
+        fixed_ticks(c2, -spec["dmax"], spec["dmax"])
         for c in (c1, c2):
             c.outline.set_linewidth(0.4)
             c.ax.tick_params(length=2, width=0.4, labelsize=6.5, pad=1)
         if var == "aice":
             c1.ax.xaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0, decimals=0))
-        self._ts_box = box(x0 + 0.45, 0.32, 3 * M + 2 * GAP - 0.55, TS - 0.42) if timeseries else None
+        self._ts_box = box(x0 + 0.45, 0.62, 3 * M + 2 * GAP - 0.55, TS - 0.72) if timeseries else None
         self.contours = []
         # pre-compute remapped fields and metrics for all steps
         n = data["pred"].shape[0]
@@ -464,8 +471,9 @@ class Frame:
             s.set_linewidth(0.5)
         ax.tick_params(length=2, width=0.4, labelsize=7)
         ax.grid(alpha=0.25, lw=0.4)
-        ax.legend(frameon=False, fontsize=7, loc="lower right", bbox_to_anchor=(1.0, 1.0), ncol=2,
-                  borderaxespad=0.1)
+        # legend at a fixed place under the curve (does not move during the animation)
+        self.fig.legend(handles=self.ts_lines, frameon=False, fontsize=7, loc="lower center",
+                        bbox_to_anchor=(0.5, 0.0), ncol=2)
         self.ts_y, self.ts_x = ys, lead
 
     def draw(self, s):
@@ -623,7 +631,7 @@ def render_ens(d, grid, a):
         rows.append((lead[s], sp, rm, ratio))
         if lead_days[s] not in a.days:
             continue
-        W, H, M, GAP = 7.2, 3.75, 2.25, 0.15
+        W, H, M, GAP = 7.6, 3.75, 2.25, 0.15
         x0 = (W - 3 * M - 2 * GAP) / 2
         fig = plt.figure(figsize=(W, H), facecolor="white")
         panels = [("P(aice ≥ 15 %)", Pi, dict(cmap=ICE, vmin=0, vmax=1), "#ff8c00"),
@@ -637,6 +645,7 @@ def render_ens(d, grid, a):
             edge(ax, Ti, grid, col, "dashed")
             cax = fig.add_axes([(x0 + i * (M + GAP) + 0.3) / W, 0.36 / H, (M - 0.6) / W, 0.07 / H])
             cb = fig.colorbar(im, cax=cax, orientation="horizontal")
+            fixed_ticks(cb, kw["vmin"], kw["vmax"])
             cb.outline.set_linewidth(0.4)
             cb.ax.tick_params(length=2, width=0.4, labelsize=6.5, pad=1)
         vt = np.datetime_as_string(d["valid_time"][s], unit="D")
@@ -722,8 +731,8 @@ class EnsFrame:
             self.MET.append(ice_metrics(f["mean"], f["truth"], f["a_mean"], f["a_truth"], area, var))
 
         # ---- layout in inches ------------------------------------------------------------
-        W, M, GAP, HEAD, TT, CB = 7.2, 2.25, 0.15, 0.80, 0.24, 0.45
-        TS = 1.35 if a.timeseries else 0.0
+        W, M, GAP, HEAD, TT, CB = 7.6, 2.25, 0.15, 0.80, 0.24, 0.45
+        TS = 1.65 if a.timeseries else 0.0
         H = HEAD + 2 * (TT + M + CB) + TS + 0.05
         self.fig = plt.figure(figsize=(W, H), facecolor="white")
 
@@ -757,6 +766,8 @@ class EnsFrame:
         def cbar(key, x, y, w, label, extend):
             cax = self.fig.add_axes(box(x, y, w, 0.075))
             cb = self.fig.colorbar(self.im[key], cax=cax, orientation="horizontal", extend=extend)
+            norm = self.im[key].norm
+            fixed_ticks(cb, norm.vmin, norm.vmax)
             cb.set_label(label, labelpad=1, fontsize=7.5)
             cb.outline.set_linewidth(0.4)
             cb.ax.tick_params(length=2, width=0.4, labelsize=6.5, pad=1)
@@ -780,7 +791,7 @@ class EnsFrame:
         self.ts = a.timeseries
         if self.ts:
             lead = d["lead_h"] / 24.0
-            tax = self.fig.add_axes(box(x0 + 0.45, 0.32, 3 * M + 2 * GAP - 0.55, TS - 0.62))
+            tax = self.fig.add_axes(box(x0 + 0.45, 0.62, 3 * M + 2 * GAP - 0.55, TS - 0.92))
             from matplotlib.patches import Patch  # noqa: PLC0415
 
             self.tax, self.band = tax, None
@@ -802,7 +813,9 @@ class EnsFrame:
             tax.grid(alpha=0.25, lw=0.4)
             handles = [self.true_line, self.mean_line,
                        Patch(facecolor="#ff8c00", alpha=0.3, edgecolor="none", label=f"spread of the {self.nm} members (min–max)")]
-            tax.legend(handles=handles, frameon=False, fontsize=6.5, loc="best", ncol=3)
+            # legend at a fixed place under the curve (does not move during the animation)
+            self.fig.legend(handles=handles, frameon=False, fontsize=7, loc="lower center",
+                            bbox_to_anchor=(0.5, 0.0), ncol=3)
             self.lead = lead
 
     def draw(self, s):
