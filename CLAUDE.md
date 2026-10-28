@@ -96,6 +96,7 @@ uv run --offline inference --from-run-id <run> --mini-epoch <N> --run-id inf_<x>
 bash slurm_submissions/submit_ice_era5.sh      # ice + ERA5 base (S1 -> S2)
 bash slurm_submissions/submit_ice_era5_fm.sh   # FM chain on ice_era5_s2
 bash slurm_submissions/submit_ice_era5_pu.sh   # partition of unity (+ FM) chain on ice_era5_s2
+bash slurm_submissions/submit_ocean_pu.sh      # partition of unity on d5xirkmf, surface decoder (SMOKE=1 first)
 ```
 
 Always pass `--mini-epoch N` (`_latest` exists only every 250 batches).
