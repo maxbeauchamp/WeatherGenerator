@@ -57,7 +57,8 @@ case "$PHASE" in
     uv run --offline python scripts/compare_inference_zips.py --streams CICE --tol 1e9 \
       "$(zip0 "$BINF_ID")" "$(zip0 "$P0INF_ID")" || true
     uv run --offline python scripts/seam_diagnostic.py "$(zip0 "$BINF_ID")" "$(zip0 "$P0INF_ID")" \
-      --labels base pu_start --stream CICE --channels aice hi --out-dir "$WD/results/$P0INF_ID/seams"
+      --labels base pu_start --stream CICE --channels aice hi --out-dir "$WD/results/$P0INF_ID/seams" \
+      --maps --zoom -20 60 70 85
     ;;
   pu1)   # CICE decoder only, PU on (finetune_ice_era5_pu.yml)
     run uv run --offline train_continue --from-run-id "$BASE_ID" --mini-epoch "$BASE_EPOCH" --run-id "$PU1_ID" \
@@ -114,7 +115,8 @@ PY
       z=$(zip0 "${pair%%:*}"); [[ -n "$z" ]] && { zips+=("$z"); labels+=("${pair##*:}"); }
     done
     uv run --offline python scripts/seam_diagnostic.py "${zips[@]}" --labels "${labels[@]}" \
-      --stream CICE --channels aice hi --out-dir "$WD/results/seams_ice_era5"
+      --stream CICE --channels aice hi --out-dir "$WD/results/seams_ice_era5" \
+      --maps --zoom -20 60 70 85   # side-by-side maps; zoom: Fram Strait - Barents Sea
     ;;
   *) echo "unknown PHASE=$PHASE"; exit 1 ;;
 esac

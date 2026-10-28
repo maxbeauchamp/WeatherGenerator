@@ -62,3 +62,30 @@ def test_missing_values(field):
     y[::7] = np.nan
     m = S.seam_measures(geo, y, t)
     assert np.isfinite(m["seam_index"]) and np.isfinite(m["rmse"])
+
+
+def test_gradient_shows_the_seams(field):
+    """|grad| of a per-cell offset field is larger on cross-cell pairs (toy seams)."""
+    lat, lon, t, geo = field
+    rng = np.random.default_rng(1)
+    blocky = t + 0.05 * rng.standard_normal(12 * 4**LEVEL)[geo.cell]
+    g_t, g_b = S.point_gradient(geo, t), S.point_gradient(geo, blocky)
+    near = geo.bdist < 0.05
+    assert np.isfinite(g_t).all()
+    assert np.median(g_b[near]) > 2 * np.median(g_t[near])
+    assert np.median(g_b[~near]) < 2 * np.median(g_t[~near])
+
+
+def test_map_figure(field, tmp_path):
+    lat, lon, t, geo = field
+    blocky = t + 0.05 * np.random.default_rng(2).standard_normal(12 * 4**LEVEL)[geo.cell]
+    preds = {"base": blocky, "pu": t + 0.01}
+    for name, box, cell_edges in [
+        ("full", S.data_box(lat, lon), False),
+        ("zoom", (0, 20, 65, 75), True),
+    ]:
+        path = tmp_path / f"m_{name}.png"
+        S.map_figure(geo, lat, lon, t, preds, "toy", path, box, 0.25, LEVEL, cell_edges)
+        assert path.stat().st_size > 10_000
+    grid = S.ImageGrid(lat, lon, (0, 20, 65, 75), 0.25, LEVEL)
+    assert grid.valid.mean() > 0.95 and grid.edges.any()

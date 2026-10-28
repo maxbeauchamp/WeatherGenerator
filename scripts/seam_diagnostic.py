@@ -20,10 +20,18 @@ Seams are jumps of the decoded field at the boundaries of the HEALPix cells of t
 Ensembles (flow matching): the measures are computed on the ensemble mean and on each of the
 first --members members (seams in the members).
 
+Side-by-side maps (--maps): for one sample and a few lead times, one column per run next to
+the target. Rows: the field, the error (prediction - target), and the local gradient |grad y|
+(mean |y(a) - y(b)| / |a - b| over the neighbour pairs), where seams show up as lines along
+the cell boundaries. Same colour scale in a row. Views: the extent of the data, and the
+--zoom boxes with the HEALPix cell boundaries drawn. Nearest-neighbour images, for display only
+(the measures above use the native points).
+
   uv run --offline python scripts/seam_diagnostic.py \\
       $WD/results/inf_ice_era5_base/validation_chkpt*_rank0000.zip \\
       $WD/results/inf_ice_era5_pu/validation_chkpt*_rank0000.zip \\
-      --labels base pu --stream CICE --channels aice hi --out-dir $WD/results/seams_pu
+      --labels base pu --stream CICE --channels aice hi --out-dir $WD/results/seams_pu \\
+      --maps --zoom -80 -30 25 55
 """
 
 import argparse
@@ -137,6 +145,169 @@ def seam_measures(geo: Geometry, y, t):
     }
 
 
+def point_gradient(geo: Geometry, y):
+    """Local gradient magnitude per point: mean |y(a) - y(b)| / |a - b| over its neighbour pairs."""
+    d = np.linalg.norm(geo.xyz[geo.pa] - geo.xyz[geo.pb], axis=-1) / geo.size  # cell sizes
+    g = np.abs(y[geo.pa] - y[geo.pb]) / np.maximum(d, 1e-12)
+    ok = np.isfinite(g)
+    n = len(y)
+    acc = np.bincount(geo.pa[ok], g[ok], n) + np.bincount(geo.pb[ok], g[ok], n)
+    cnt = np.bincount(geo.pa[ok], minlength=n) + np.bincount(geo.pb[ok], minlength=n)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(cnt > 0, acc / cnt, np.nan)
+
+
+def _wrap(lon):
+    return (np.asarray(lon, np.float64) + 180.0) % 360.0 - 180.0
+
+
+class ImageGrid:
+    """Regular lon-lat image of a box; nearest native point within max_dist (display only)."""
+
+    def __init__(self, lat, lon, box, res, level):
+        from scipy.spatial import cKDTree  # noqa: PLC0415
+
+        lon0, lon1, lat0, lat1 = box
+        self.extent = (lon0, lon1, lat0, lat1)
+        glon = np.arange(lon0 + res / 2, lon1, res)
+        glat = np.arange(lat0 + res / 2, lat1, res)
+        glat2, glon2 = np.meshgrid(glat, glon, indexing="ij")
+        self.shape = glat2.shape
+        # max distance: 1.5 x the larger of the image pixel and the median point spacing
+        tree = cKDTree(unit_xyz(lat, _wrap(lon)))
+        sub = np.linspace(0, len(lat) - 1, min(len(lat), 2000)).astype(int)
+        spacing = np.median(tree.query(tree.data[sub], k=2)[0][:, 1])
+        dmax = 1.5 * max(np.deg2rad(res), spacing)
+        dist, self.idx = tree.query(
+            unit_xyz(glat2.ravel(), glon2.ravel()), distance_upper_bound=dmax
+        )
+        self.valid = np.isfinite(dist)
+        self.idx[~self.valid] = 0
+        cells = cell_and_offsets(glat2.ravel(), glon2.ravel(), level)[0].reshape(self.shape)
+        edge = np.zeros(self.shape, bool)
+        edge[:, 1:] |= cells[:, 1:] != cells[:, :-1]
+        edge[1:, :] |= cells[1:, :] != cells[:-1, :]
+        self.edges = edge
+
+    def image(self, values):
+        img = np.asarray(values, np.float64)[self.idx]
+        img[~self.valid] = np.nan
+        return img.reshape(self.shape)
+
+
+def data_box(lat, lon, margin=1.0):
+    lon = _wrap(lon)
+    return (max(-180.0, lon.min() - margin), min(180.0, lon.max() + margin),
+            max(-90.0, lat.min() - margin), min(90.0, lat.max() + margin))  # fmt: skip
+
+
+def map_figure(geo, lat, lon, target, preds, title, path, box, res, level, cell_edges):
+    """One figure: columns = target + runs; rows = field, error, |grad|. preds: {label: y}."""
+    import matplotlib  # noqa: PLC0415
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt  # noqa: PLC0415
+
+    grid = ImageGrid(lat, lon, box, res, level)
+    cols = {"target": target, **preds}
+    imgs = {k: grid.image(v) for k, v in cols.items()}
+    errs = {k: grid.image(v - target) for k, v in preds.items()}
+    grads = {k: grid.image(point_gradient(geo, v)) for k, v in cols.items()}
+
+    def lim(arrs, lo, hi):
+        v = np.concatenate([a[np.isfinite(a)] for a in arrs] + [np.zeros(0)])
+        return (np.percentile(v, lo), np.percentile(v, hi)) if v.size else (0.0, 1.0)
+
+    fmin, fmax = lim([imgs["target"]], 1, 99)
+    emax = max(lim([np.abs(e) for e in errs.values()], 0, 99)[1], 1e-12)
+    gmax = max(lim(list(grads.values()), 0, 99)[1], 1e-12)
+    n = len(cols)
+    aspect = (box[3] - box[2]) / max(box[1] - box[0], 1e-6)
+    fig, ax = plt.subplots(
+        3, n, figsize=(3.4 * n + 0.8, 3 * 3.4 * aspect + 0.8), squeeze=False, layout="constrained"
+    )
+    rows = [
+        ("field", imgs, {"cmap": "viridis", "vmin": fmin, "vmax": fmax}),
+        ("prediction - target", errs, {"cmap": "RdBu_r", "vmin": -emax, "vmax": emax}),
+        ("|grad| (per cell size)", grads, {"cmap": "magma", "vmin": 0.0, "vmax": gmax}),
+    ]
+    edges = np.ma.masked_where(~grid.edges, grid.edges.astype(float))
+    for r, (name, data, kw) in enumerate(rows):
+        im = None
+        for c, label in enumerate(cols):
+            a = ax[r, c]
+            a.set_xticks([])
+            a.set_yticks([])
+            if label not in data:  # no error map for the target: empty panel, row label kept
+                a.set_frame_on(False)
+                continue
+            im = a.imshow(
+                data[label], origin="lower", extent=grid.extent, interpolation="nearest", **kw
+            )
+            if cell_edges:
+                a.imshow(edges, origin="lower", extent=grid.extent, cmap="Greys", vmin=0, vmax=1,
+                         alpha=0.35, interpolation="nearest")  # fmt: skip
+            if r == 0:
+                a.set_title(label, fontsize=10)
+        ax[r, 0].set_ylabel(name, fontsize=9)
+        fig.colorbar(im, ax=list(ax[r]), shrink=0.85, pad=0.01)
+    where = f"lon {box[0]:g}..{box[1]:g}, lat {box[2]:g}..{box[3]:g}"
+    edges_txt = ", grey: HEALPix cell boundaries" if cell_edges else ""
+    fig.suptitle(f"{title} ({where}{edges_txt})", fontsize=10)
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
+def maps(
+    zips, labels, stream, channels, samples, fsteps, level, zooms, out_dir, res_full, res_zoom
+):
+    """Side-by-side maps of all runs for one sample (the first common one) and a few lead times."""
+    import wg_zip2netcdf as W  # noqa: PLC0415
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stores = [W.Store(z) for z in zips]
+    common = [s for s in stores[0].samples if all(s in st.samples for st in stores[1:])]
+    sel = [s for s in common if not samples or s in samples][:1]
+    if not sel:
+        print("maps: no sample common to all runs")  # noqa: T201
+        return
+    sample = sel[0]
+    steps = stores[0].fsteps(sample, stream)
+    if fsteps:
+        steps = [f for f in steps if f in fsteps]
+    elif steps:
+        steps = sorted({steps[0], steps[len(steps) // 2], steps[-1]})
+    for f in steps:
+        ref = stores[0].dataset(sample, stream, f, "target")
+        if ref is None:
+            continue
+        lat, lon = ref["coords"][:, 0].astype(np.float64), ref["coords"][:, 1].astype(np.float64)
+        geo = Geometry(lat, lon, level)
+        for ch in channels:
+            if ch not in ref["channels"]:
+                continue
+            target = ref["data"][:, ref["channels"].index(ch), 0].astype(np.float64)
+            preds = {}
+            for st, label in zip(stores, labels, strict=True):
+                p = st.dataset(sample, stream, f, "prediction")
+                if p is None or ch not in p["channels"]:
+                    continue
+                j = W.match_points(p["coords"][:, 0], p["coords"][:, 1], ref["coords"])
+                y = np.full(len(lat), np.nan)
+                ok = j >= 0
+                y[ok] = p["data"][j[ok], p["channels"].index(ch), :].astype(np.float64).mean(-1)
+                preds[label] = y
+            views = [("full", data_box(lat, lon), res_full, False)]
+            views += [(f"zoom{i}", tuple(z), res_zoom, True) for i, z in enumerate(zooms)]
+            for name, box, res, cell_edges in views:
+                path = out_dir / f"maps_{ch}_s{sample}_f{f}_{name}.png"
+                title = f"{stream} {ch}, sample {sample}, step {f}, {name}"
+                map_figure(geo, lat, lon, target, preds, title, path, box, res, level, cell_edges)
+                print(f">> {path}")  # noqa: T201
+    for st in stores:
+        st.close()
+
+
 def _mean(dicts, key):
     """Mean over samples / steps, ignoring NaN (empty bins stay NaN, without warnings)."""
     with warnings.catch_warnings():
@@ -244,10 +415,26 @@ def main():
     ap.add_argument("--healpix-level", type=int, default=5)
     ap.add_argument("--members", type=int, default=2, help="members analysed one by one")
     ap.add_argument("--out-dir", type=pathlib.Path, default=pathlib.Path("seams"))
+    ap.add_argument("--maps", action="store_true", help="side-by-side maps of the runs")
+    ap.add_argument("--map-fsteps", nargs="*", type=int, help="default: first, middle, last")
+    ap.add_argument(
+        "--zoom",
+        nargs=4,
+        type=float,
+        action="append",
+        default=[],
+        metavar=("LON0", "LON1", "LAT0", "LAT1"),
+        help="zoom box (repeatable)",
+    )
+    ap.add_argument("--res-full", type=float, default=0.25, help="pixel of the full view (deg)")
+    ap.add_argument("--res-zoom", type=float, default=0.1, help="pixel of the zoom views (deg)")
     a = ap.parse_args()
     labels = a.labels or [z.parent.name for z in a.zips]
     run(a.zips, labels, a.stream, a.channels, a.samples, a.fsteps, a.healpix_level, a.members,
         a.out_dir)  # fmt: skip
+    if a.maps:
+        maps(a.zips, labels, a.stream, a.channels, a.samples, a.map_fsteps, a.healpix_level,
+             a.zoom, a.out_dir, a.res_full, a.res_zoom)  # fmt: skip
 
 
 if __name__ == "__main__":

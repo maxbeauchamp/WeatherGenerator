@@ -56,7 +56,8 @@ seams() {  # seams <out_dir> <run_id:label>...
     z=$(zip0 "${pair%%:*}"); [[ -n "$z" ]] && { zips+=("$z"); labels+=("${pair##*:}"); }
   done
   uv run --offline python scripts/seam_diagnostic.py "${zips[@]}" --labels "${labels[@]}" \
-    --stream "$STREAM" --channels thetao_0.5 so_0.5 zos --healpix-level 5 --out-dir "$out"
+    --stream "$STREAM" --channels thetao_0.5 so_0.5 zos --healpix-level 5 --out-dir "$out" \
+    --maps --zoom -80 -30 25 55 --zoom 130 170 25 50   # side-by-side maps; zooms: Gulf Stream, Kuroshio
 }
 echo "phase=$PHASE node=$SLURM_JOB_NODELIST tasks=$SLURM_NTASKS"
 

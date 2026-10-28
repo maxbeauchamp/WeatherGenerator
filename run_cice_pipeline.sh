@@ -221,11 +221,13 @@ case "${1:-}" in
     SEAM_RUNS="inf_pu_off inf_pu_on" SEAM_OUT=inf_pu_on "$0" seams
     ;;
   seams)
-    # SEAM_RUNS: run ids (results/<id>/validation_*_rank0000.zip); SEAM_STREAM, SEAM_CHANNELS
+    # SEAM_RUNS: run ids (results/<id>/validation_*_rank0000.zip); SEAM_STREAM, SEAM_CHANNELS;
+    # side-by-side maps of the runs, SEAM_ZOOM="lon0 lon1 lat0 lat1" adds a zoom with the cell boundaries
     zips=(); for r in ${SEAM_RUNS:?SEAM_RUNS=\"run ids\"}; do zips+=("$WD"/results/$r/validation_chkpt*_rank0000.zip); done
+    zoom=(); [[ -n "${SEAM_ZOOM:-}" ]] && zoom=(--zoom $SEAM_ZOOM)
     uv run --offline python scripts/seam_diagnostic.py "${zips[@]}" --labels ${SEAM_RUNS} \
       --stream "${SEAM_STREAM:-CICE}" --channels ${SEAM_CHANNELS:-aice hi} \
-      --out-dir "$WD/results/${SEAM_OUT:-${SEAM_RUNS%% *}}/seams"
+      --out-dir "$WD/results/${SEAM_OUT:-${SEAM_RUNS%% *}}/seams" --maps "${zoom[@]}"
     ;;
   *)
     sed -n '2,30p' "$0"; exit 1 ;;
