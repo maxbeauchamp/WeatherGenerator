@@ -264,6 +264,17 @@ def encode_points(tok, xyz, cell, n_time=6, n_geo=2, seed=0, attrs_period=None):
     return coords, enc, per_cell, cell, order
 
 
+def pair_encodings(geo, tok, coords, enc, per_cell):
+    """Pairs from the data loader (pu_pairs) and their encodings as the model builds them."""
+    from weathergen.model.partition_of_unity import PUEncoding, pu_pairs  # noqa: PLC0415
+
+    xyz, pu_lens, point_idx, pair_cell, weight = pu_pairs(geo, coords, per_cell)
+    point_idx, pair_cell = point_idx.to(torch.int64), pair_cell.to(torch.int64)
+    pu_enc = PUEncoding(tok.hl_target)
+    coords_pu = pu_enc.encode(enc[point_idx, :-99], xyz[point_idx], pair_cell)
+    return coords_pu, pu_lens, point_idx, weight, pair_cell, xyz
+
+
 def test_coords_roundtrip_cells(geo, tok):
     """The lat/lon convention of the test helper gives back the cells of the points."""
     from weathergen.datasets.tokenizer_utils import hpy_cell_splits  # noqa: PLC0415
@@ -275,18 +286,38 @@ def test_coords_roundtrip_cells(geo, tok):
     assert (counts == per_cell).all()
 
 
-def test_pu_target_coords_own_cell_is_original(geo, tok):
-    from weathergen.model.partition_of_unity import pu_target_coords  # noqa: PLC0415
+def test_pair_encoding_equals_the_tokenizer(geo, tok):
+    """The vectorised encoding of the model (PUEncoding) equals get_target_coords_local, the
+    tokenizer function, applied to the pairs grouped by cell."""
+    from weathergen.datasets.tokenizer_utils import get_target_coords_local  # noqa: PLC0415
 
+    _, _, xyz, cell = random_points(3000, seed=8)
+    coords, enc, per_cell, _, _ = encode_points(tok, xyz, cell)
+    coords_pu, pu_lens, point_idx, _, pair_cell, pts = pair_encodings(
+        geo, tok, coords, enc, per_cell
+    )
+    attrs = enc[point_idx, :-99]
+    ref = get_target_coords_local(
+        attrs[:, 0], HL, pu_lens, coords[point_idx], attrs[:, 1:], attrs[:, :0],
+        tok.hpy_verts_rots_target, tok.hpy_verts_local_target, tok.hpy_nctrs_target,
+    )  # fmt: skip
+    assert coords_pu.shape == ref.shape
+    assert (coords_pu - ref).abs().max() < 1e-6
+    # pairs sorted by cell, lengths per cell
+    assert torch.equal(
+        pair_cell, torch.repeat_interleave(torch.arange(len(pu_lens)), pu_lens.long())
+    )
+    assert pts.dtype == torch.float32 and pts.shape == (len(coords), 3)
+
+
+def test_pu_pairs_own_cell_is_original(geo, tok):
     _, _, xyz, cell = random_points(3000, seed=6)
     coords, enc, per_cell, cell_sorted, _ = encode_points(tok, xyz, cell)
-    coords_pu, pu_lens, point_idx, weight = pu_target_coords(
-        geo, coords, enc, per_cell, tok.hpy_verts_rots_target, tok.hpy_verts_local_target,
-        tok.hpy_nctrs_target,
-    )  # fmt: skip
+    coords_pu, pu_lens, point_idx, weight, pair_cell, _ = pair_encodings(
+        geo, tok, coords, enc, per_cell
+    )
     assert coords_pu.shape == (len(point_idx), enc.shape[1]) and coords_pu.dtype == enc.dtype
     assert int(pu_lens.sum()) == len(point_idx)
-    pair_cell = torch.repeat_interleave(torch.arange(len(pu_lens)), pu_lens.to(torch.int64))
     # point attributes (stream id, time, geoinfo) copied for every pair
     assert torch.equal(coords_pu[:, :-99], enc[point_idx, :-99])
     # a pair in the point's own cell is the original encoding
@@ -297,21 +328,15 @@ def test_pu_target_coords_own_cell_is_original(geo, tok):
     assert (coords_pu[~own, -99:] - enc[point_idx[~own], -99:]).abs().amax(1).min() > 1e-4
 
 
-def test_pu_target_coords_continuous_for_a_fixed_cell(geo, tok):
+def test_pu_pairs_continuous_for_a_fixed_cell(geo, tok):
     """x just on either side of a boundary, both encoded relative to the SAME cell c: the
     encodings are equal up to O(eps). (Relative to their own cells, they jump.)"""
-    from weathergen.model.partition_of_unity import pu_target_coords  # noqa: PLC0415
-
     xm, cm, xp, cp = boundary_pairs(geo, 2000, seed=7, gap=1e-4)
     n = len(xm)
     xyz = torch.cat([xm, xp])
     cell = torch.cat([cm, cp])
     coords, enc, per_cell, cell_sorted, order = encode_points(tok, xyz, cell)
-    coords_pu, pu_lens, point_idx, _ = pu_target_coords(
-        geo, coords, enc, per_cell, tok.hpy_verts_rots_target, tok.hpy_verts_local_target,
-        tok.hpy_nctrs_target,
-    )  # fmt: skip
-    pair_cell = torch.repeat_interleave(torch.arange(len(pu_lens)), pu_lens.to(torch.int64))
+    coords_pu, pu_lens, point_idx, _, pair_cell, _ = pair_encodings(geo, tok, coords, enc, per_cell)
     # map sorted rows back to (side, boundary pair id)
     pid, side = order % n, order // n
     # encoding of every (boundary pair, side, cell): keep cells seen from both sides
@@ -334,13 +359,14 @@ def test_stream_data_pu_fields_device():
     from weathergen.datasets.stream_data import StreamData  # noqa: PLC0415
 
     sd = StreamData(0, 1, 3, 12)
-    assert sd.target_coords_pu == [None, None, None]
-    sd.add_pu_coords(
-        1, torch.zeros(7, 4), torch.ones(12, dtype=torch.int32), torch.arange(7), torch.ones(7)
+    assert sd.pu_xyz == [None, None, None]
+    i32 = torch.arange(7, dtype=torch.int32)
+    sd.add_pu_pairs(
+        1, torch.zeros(5, 3), torch.ones(12, dtype=torch.int32), i32, i32, torch.ones(7)
     )
     sd.to_device("cpu")
-    assert sd.target_coords_pu[1].shape == (7, 4) and sd.pu_weight[0] is None
-    assert sd.target_coords_pu_lens[1].dtype == torch.int32
+    assert sd.pu_xyz[1].shape == (5, 3) and sd.pu_weight[0] is None
+    assert sd.target_coords_pu_lens[1].dtype == torch.int32 and sd.pu_cell[1].dtype == torch.int32
 
 
 # ---------------------------------------------------------------- model: decoders end to end
@@ -396,6 +422,7 @@ def _fake_model(cf, engine, embed, head, pu_cfg, n_cells):
     from types import SimpleNamespace  # noqa: PLC0415
 
     from weathergen.model.model import Model  # noqa: PLC0415
+    from weathergen.model.partition_of_unity import PUEncoding  # noqa: PLC0415
 
     m = SimpleNamespace(
         cf=cf,
@@ -407,6 +434,7 @@ def _fake_model(cf, engine, embed, head, pu_cfg, n_cells):
         target_token_engines={"S": engine},
         fm_conditioners=None,
         pu_cfg=pu_cfg,
+        pu_enc=PUEncoding(HL_SMALL),
     )
     m._pu_gather = lambda *a: Model._pu_gather(m, *a)
     m._fm_gather = lambda *a: Model._fm_gather(m, *a)
@@ -432,16 +460,12 @@ def _add_fm(m, channels, dim, sampling, members=2):
 
 def _sample(tok, geo, coords, enc, per_cell):
     from weathergen.datasets.stream_data import StreamData  # noqa: PLC0415
-    from weathergen.model.partition_of_unity import pu_target_coords  # noqa: PLC0415
+    from weathergen.model.partition_of_unity import pu_pairs  # noqa: PLC0415
 
     sd = StreamData(0, 1, 1, len(per_cell))
     sd.target_coords[0] = enc
     sd.target_coords_lens[0] = per_cell
-    pu = pu_target_coords(
-        geo, coords, enc, per_cell, tok.hpy_verts_rots_target, tok.hpy_verts_local_target,
-        tok.hpy_nctrs_target,
-    )  # fmt: skip
-    sd.add_pu_coords(0, *pu)
+    sd.add_pu_pairs(0, *pu_pairs(geo, coords, per_cell))
     from types import SimpleNamespace  # noqa: PLC0415
 
     return SimpleNamespace(streams_data={"S": sd})

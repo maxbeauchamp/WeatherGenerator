@@ -525,7 +525,7 @@ Set repeat_data_in_mini_epoch to True if this is undesired."
                 )
                 stream_data.add_target_coords(self._stage, timestep_idx, tc, tc_l, rdata.is_spoof)
                 if pu:
-                    stream_data.add_pu_coords(timestep_idx, *pu[0])
+                    stream_data.add_pu_pairs(timestep_idx, *pu[0])
 
                 if fm_init_data is not None:
                     rdata_prev = fm_init_data if step == 0 else output_data[step - 1]

@@ -42,7 +42,12 @@ from weathergen.model.flow_matching import FlowMatchingConditioner, get_flow_mat
 from weathergen.model.forcing_injection import ForcingInjection, get_forcing_reinjection_config
 from weathergen.model.layers import MLP, NamedLinear
 from weathergen.model.norms import AdaLayerNorm
-from weathergen.model.partition_of_unity import blend, get_partition_of_unity_config, uses_pu
+from weathergen.model.partition_of_unity import (
+    PUEncoding,
+    blend,
+    get_partition_of_unity_config,
+    uses_pu,
+)
 from weathergen.model.utils import get_num_parameters
 from weathergen.utils.distributed import is_root
 from weathergen.utils.utils import get_dtype, is_stream_forcing
@@ -339,6 +344,8 @@ class Model(torch.nn.Module):
         self.fm_sampling = False
         # partition of unity of the decoders (disabled = original decoders)
         self.pu_cfg = get_partition_of_unity_config(cf)
+        # pair encodings (tables only, no parameters)
+        self.pu_enc = PUEncoding(cf.healpix_level) if self.pu_cfg["enabled"] else None
         self.pred_heads = None
         self.q_cells: torch.Tensor | None = None
         self.streams: dict[str, typing.Any] = cf.streams
@@ -900,26 +907,31 @@ class Model(torch.nn.Module):
     def _pu_gather(self, batch, stream_name, step, t_coords_lens):
         """
         Partition of unity: (point, cell) pairs of all samples of the batch, concatenated as the
-        target points are (pu_point is offset by the points of the previous samples).
+        target points are (pu_point is offset by the points of the previous samples), and their
+        encodings, built here on the device from the target encodings.
         Returns coords (P, W), lens (1 + cells * batch,) int32 for varlen attention, point (P,),
         weight (P,).
         """
-        coords, lens, points, weights = [], [], [], []
+        attrs, xyz, cells, lens, points, weights = [], [], [], [], [], []
         offset = 0
         for sample, n in zip(batch.samples, t_coords_lens, strict=True):
             sd = sample.streams_data[stream_name]
-            assert sd.target_coords_pu[step] is not None, (
+            assert sd.pu_point[step] is not None, (
                 f"partition of unity: no (point, cell) pairs for {stream_name} at step {step} "
                 "(the data loader must use the same partition_of_unity config)"
             )
-            coords.append(sd.target_coords_pu[step])
+            p = sd.pu_point[step].to(torch.int64)
+            attrs.append(sd.target_coords[step][p, :-99])  # stream id, time, geoinfo
+            xyz.append(sd.pu_xyz[step][p])
+            cells.append(sd.pu_cell[step].to(torch.int64))
             lens.append(sd.target_coords_pu_lens[step])
-            points.append(sd.pu_point[step] + offset)
+            points.append(p + offset)
             weights.append(sd.pu_weight[step])
             offset += n
+        coords = self.pu_enc.encode(torch.cat(attrs), torch.cat(xyz), torch.cat(cells))
         lens = torch.cat(lens).to(torch.int32)
         lens = torch.cat([torch.zeros(1, dtype=torch.int32, device=lens.device), lens])
-        return torch.cat(coords), lens, torch.cat(points), torch.cat(weights)
+        return coords, lens, torch.cat(points), torch.cat(weights)
 
     def predict_decoders(
         self,

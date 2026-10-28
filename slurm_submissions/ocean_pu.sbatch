@@ -41,8 +41,9 @@ export SRUN_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK}
 if [[ "$SLURM_JOB_NUM_NODES" == "1" ]]; then export MASTER_ADDR=127.0.0.1
 else export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1); fi
 export MASTER_PORT=$((29500 + SLURM_JOB_ID % 1000))
-run() {  # one task per GPU (Slurm binds one GPU per task -> it is cuda:0 for the task)
-  srun bash -c '
+run() {  # one task per GPU (Slurm binds one GPU per task -> it is cuda:0 for the task);
+       # a task that fails stops the others (no NCCL hang until the time limit)
+  srun --kill-on-bad-exit=1 bash -c '
     if [[ -n "${CUDA_VISIBLE_DEVICES:-}" && "$CUDA_VISIBLE_DEVICES" != *,* ]]; then export LOCAL_RANK=0
     else export LOCAL_RANK=$SLURM_LOCALID; fi
     export RANK=$SLURM_PROCID WORLD_SIZE=$SLURM_NTASKS

@@ -31,7 +31,7 @@ def _pin_tensor(tensor: torch.Tensor) -> torch.Tensor:
 
 
 # partition of unity fields of StreamData (one entry per output step, None when unused)
-_PU_FIELDS = ("target_coords_pu", "target_coords_pu_lens", "pu_point", "pu_weight")
+_PU_FIELDS = ("pu_xyz", "target_coords_pu_lens", "pu_point", "pu_cell", "pu_weight")
 
 
 def _pin_tensor_list(tensor_list: list) -> list:
@@ -122,11 +122,13 @@ class StreamData:
         self.fm_target = [None for _ in range(output_steps)]
         self.fm_prev = [None for _ in range(output_steps)]
 
-        # partition of unity (optional): encodings of the (point, cell) pairs, grouped by cell,
-        # their lengths per cell, the target point (index into target_coords) and the weight
-        self.target_coords_pu = [None for _ in range(output_steps)]
+        # partition of unity (optional): the target points on the sphere and the (point, cell)
+        # pairs, grouped by cell (lengths per cell), with their target point (index into
+        # target_coords), cell and weight. The pair encodings are built in the model.
+        self.pu_xyz = [None for _ in range(output_steps)]
         self.target_coords_pu_lens = [None for _ in range(output_steps)]
         self.pu_point = [None for _ in range(output_steps)]
+        self.pu_cell = [None for _ in range(output_steps)]
         self.pu_weight = [None for _ in range(output_steps)]
 
     def pin_memory(self):
@@ -201,14 +203,15 @@ class StreamData:
         self.fm_target[fstep] = x_target
         self.fm_prev[fstep] = x_prev
 
-    def add_pu_coords(self, fstep: int, coords_pu, coords_pu_lens, point_idx, weight) -> None:
+    def add_pu_pairs(self, fstep: int, xyz, pairs_per_cell, point_idx, pair_cell, weight) -> None:
         """
-        Partition of unity: encodings of the (point, cell) pairs of output step fstep, grouped
-        by cell (lengths coords_pu_lens), with their target point and weight.
+        Partition of unity: target points xyz (unit sphere) and (point, cell) pairs of output
+        step fstep, grouped by cell (lengths pairs_per_cell), with their point, cell and weight.
         """
-        self.target_coords_pu[fstep] = coords_pu
-        self.target_coords_pu_lens[fstep] = coords_pu_lens
+        self.pu_xyz[fstep] = xyz
+        self.target_coords_pu_lens[fstep] = pairs_per_cell
         self.pu_point[fstep] = point_idx
+        self.pu_cell[fstep] = pair_cell
         self.pu_weight[fstep] = weight
 
     def add_source(

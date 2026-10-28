@@ -30,7 +30,10 @@ What: decode x as if it belonged to every cell c near it, and blend with continu
 
 No parameters: the model is not the identity at start (the identity is the discontinuous
 limit), a decoder fine-tuning is needed. Here: config, geometry and pairs (data loader, CPU),
-blend (model).
+encoding of the pairs and blend (model, GPU). The data loader only ships the pairs (point,
+cell, weight) and the points on the sphere: the pair encodings are ~3.2x the target encoding
+and are built on the GPU (shipping them from the workers overflows the shared memory on large
+grids).
 
 Config (main config):
 
@@ -159,57 +162,77 @@ class PUGeometry:
 _NUM_LOCAL_COORDS = 99
 
 
-def pu_target_coords(
-    geo: PUGeometry,
-    coords: torch.Tensor,
-    coords_local: torch.Tensor,
-    points_per_cell: torch.Tensor,
-    verts_rots,
-    verts_local,
-    nctrs,
-):
+def pu_pairs(geo: PUGeometry, coords: torch.Tensor, points_per_cell: torch.Tensor):
     """
-    Data loader: encodings of all (point, cell) pairs of one stream and step.
+    Data loader: (point, cell) pairs of one stream and step.
 
-    coords (Nq, 2) lat/lon of the target points, coords_local (Nq, W) their encoding and
-    points_per_cell (N,) their counts per cell, as returned by tokenize_apply_mask_target (points
-    sorted by cell); verts_rots, verts_local, nctrs: the tokenizer target geometry.
-    Returns (coords_pu (P, W), pairs_per_cell (N,) int32, point_idx (P,) int64, weight (P,)).
-    A pair (x, c) is encoded as x seen from c: the point attributes (stream id, time, geoinfo)
-    are copied, the 99 local coordinates are computed relative to c.
+    coords (Nq, 2) lat/lon of the target points and points_per_cell (N,) their counts per cell,
+    as returned by tokenize_apply_mask_target (points sorted by cell).
+    Returns xyz (Nq, 3) float32 (the points as the target encoding sees them),
+    pairs_per_cell (N,) int32, point_idx (P,) int32, pair_cell (P,) int32, weight (P,) float32.
     """
-    from weathergen.datasets.tokenizer_utils import (  # noqa: PLC0415
-        get_target_coords_local,
-        theta_phi_to_standard_coords,
-    )
+    from weathergen.datasets.tokenizer_utils import theta_phi_to_standard_coords  # noqa: PLC0415
     from weathergen.datasets.utils import s2tor3  # noqa: PLC0415
 
     n_cells = geo.ctrs.shape[0]
-    if coords_local.numel() == 0:
-        return (
-            torch.zeros((0, coords_local.shape[-1] if coords_local.dim() == 2 else 0)),
-            torch.zeros(n_cells, dtype=torch.int32),
-            torch.zeros(0, dtype=torch.int64),
-            torch.zeros(0, dtype=torch.float32),
-        )
     coords = torch.as_tensor(coords)
-    xyz = s2tor3(*theta_phi_to_standard_coords(coords.to(torch.float64)))
+    if coords.numel() == 0:
+        empty = torch.zeros(0, dtype=torch.int32)
+        return (torch.zeros((0, 3)), torch.zeros(n_cells, dtype=torch.int32), empty, empty,
+                torch.zeros(0, dtype=torch.float32))  # fmt: skip
+    xyz64 = s2tor3(*theta_phi_to_standard_coords(coords.to(torch.float64)))
     cell = torch.repeat_interleave(torch.arange(n_cells), points_per_cell.to(torch.int64))
-    point_idx, _, weight, pairs_per_cell = geo.pairs(xyz, cell)
-    attrs = coords_local[point_idx, :-_NUM_LOCAL_COORDS]
-    # attrs go in as "geoinfos" with an empty time block: same columns as the original encoding
-    coords_pu = get_target_coords_local(
-        attrs[:, 0],
-        geo.healpix_level,
-        pairs_per_cell,
-        coords[point_idx],
-        attrs[:, 1:],
-        attrs[:, :0],
-        verts_rots,
-        verts_local,
-        nctrs,
-    )
-    return coords_pu.to(coords_local.dtype), pairs_per_cell, point_idx, weight
+    point_idx, pair_cell, weight, pairs_per_cell = geo.pairs(xyz64, cell)
+    # same computation as in get_target_coords_local (dtype of coords)
+    xyz = s2tor3(*theta_phi_to_standard_coords(coords)).to(torch.float32)
+    return (xyz, pairs_per_cell, point_idx.to(torch.int32), pair_cell.to(torch.int32),
+            weight)  # fmt: skip
+
+
+class PUEncoding:
+    """
+    Model: target encoding of the (point, cell) pairs, on the device of the points. Same columns
+    and same operations as tokenizer_utils.get_target_coords_local, vectorised over the pairs:
+    [point attributes (stream id, time, geoinfo), 99 local coordinates relative to the cell]:
+      5 x (ref - R_v(c) x, 12 vertex coordinates of c)   v = 00, 10, 11, 01, centre
+      8 x (ref - R_n(c) x)                               n = the 8 neighbour centres of c
+    Tables from the tokenizer (float32, ~6 MB at level 5); plain tensors, not module buffers
+    (not in the checkpoints).
+    """
+
+    def __init__(self, healpix_level: int):
+        from weathergen.datasets.tokenizer import Tokenizer  # noqa: PLC0415
+        from weathergen.datasets.utils import vecs_to_rots  # noqa: PLC0415
+
+        tok = Tokenizer(healpix_level)
+        self.rots = torch.stack(tok.hpy_verts_rots_target)  # (5, N, 3, 3)
+        self.verts_local = tok.hpy_verts_local_target.to(torch.float32)  # (N, 5, 12)
+        # as in locs_to_ctr_coords
+        self.nrots = torch.stack(
+            [vecs_to_rots(c).to(torch.float32) for c in tok.hpy_nctrs_target]
+        )  # (8, N, 3, 3)
+        self._on = {}
+
+    def _tables(self, device):
+        key = str(device)
+        if key not in self._on:
+            self._on[key] = tuple(t.to(device) for t in (self.rots, self.verts_local, self.nrots))
+        return self._on[key]
+
+    def encode(self, attrs: torch.Tensor, xyz: torch.Tensor, cell: torch.Tensor) -> torch.Tensor:
+        """attrs (P, W - 99), xyz (P, 3), cell (P,) int64 -> (P, W) in the dtype of attrs."""
+        rots, verts_local, nrots = self._tables(xyz.device)
+        x = xyz.to(torch.float32).unsqueeze(-1)
+        ref = torch.tensor([1.0, 0.0, 0.0], device=xyz.device)
+        cols = []
+        for k in range(rots.shape[0]):
+            cols.append(ref - torch.bmm(rots[k][cell], x).squeeze(-1))
+            cols.append(verts_local[cell, k])
+        for k in range(nrots.shape[0]):
+            cols.append(ref - torch.bmm(nrots[k][cell], x).squeeze(-1))
+        local = torch.cat(cols, -1)
+        assert local.shape[-1] == _NUM_LOCAL_COORDS
+        return torch.cat([attrs, local.to(attrs.dtype)], -1)
 
 
 def blend(pred_pairs: torch.Tensor, point_idx: torch.Tensor, weight: torch.Tensor, n_points: int):
