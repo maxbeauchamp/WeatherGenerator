@@ -10,10 +10,12 @@
 """
 CPU fallback for flash_attn, for local tests (e.g. macOS, no GPU).
 
-flash_attn is GPU-only and imported unconditionally by weathergen.model.attention. When it is
-missing, a pure-torch reference implementation of the two functions used by the code is
-installed as the `flash_attn` module. Slow, exact up to float rounding, no dropout. It is never
-used when the real flash_attn is installed (JUPITER).
+flash_attn is GPU-only and imported unconditionally by weathergen.model.attention. A
+pure-torch reference implementation of the two functions used by the code is provided. Slow,
+exact up to float rounding, no dropout.
+- flash_attn missing (macOS): installed as the `flash_attn` module.
+- flash_attn installed (JUPITER): CUDA tensors go to the real flash_attn, CPU tensors (tests
+  built on the CPU) to the fallback, which the real kernels do not support.
 """
 
 import importlib.util
@@ -74,3 +76,22 @@ if importlib.util.find_spec("flash_attn") is None:
     _mod.flash_attn_func = flash_attn_func
     _mod.__cpu_fallback__ = True
     sys.modules["flash_attn"] = _mod
+else:
+    import flash_attn as _fa
+
+    _real = {
+        "flash_attn_varlen_func": _fa.flash_attn_varlen_func,
+        "flash_attn_func": _fa.flash_attn_func,
+    }
+    _cpu = {"flash_attn_varlen_func": flash_attn_varlen_func, "flash_attn_func": flash_attn_func}
+
+    def _dispatch(name):
+        def fn(q, *args, **kwargs):
+            return (_real if q.is_cuda else _cpu)[name](q, *args, **kwargs)
+
+        return fn
+
+    for _name in _real:
+        setattr(_fa, _name, _dispatch(_name))
+        if "weathergen.model.attention" in sys.modules:  # already imported: patch its names too
+            setattr(sys.modules["weathergen.model.attention"], _name, getattr(_fa, _name))
