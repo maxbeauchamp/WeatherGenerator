@@ -342,6 +342,7 @@ class Model(torch.nn.Module):
         self.fm_cfg = get_flow_matching_config(cf)
         self.fm_conditioners: nn.ModuleDict | None = None
         self.fm_sampling = False
+        self.fm_sampling_cfg = self.fm_cfg  # fm_cfg with the inference settings of the sampling
         # partition of unity of the decoders (disabled = original decoders)
         self.pu_cfg = get_partition_of_unity_config(cf)
         # pair encodings (tables only, no parameters)
@@ -807,11 +808,16 @@ class Model(torch.nn.Module):
         f_tokens = f_tokens.reshape(shape).sum(axis=1)
         return self.forcing_injection(tokens, f_tokens)
 
-    def set_flow_matching_sampling(self, enabled: bool) -> None:
-        """Generate members by ODE sampling (inference) instead of the one-pass training loss."""
+    def set_flow_matching_sampling(self, enabled: bool, inference: dict | None = None) -> None:
+        """
+        Generate members by ODE sampling instead of the one-pass training loss. inference
+        overrides flow_matching.inference (validation: fewer members and steps).
+        """
         self.fm_sampling = bool(enabled) and self.fm_conditioners is not None
+        inf = {**self.fm_cfg["inference"], **(inference or {})}
+        self.fm_sampling_cfg = {**self.fm_cfg, "inference": inf}
         if self.fm_sampling and is_root():
-            logger.info(f"Flow matching: sampling enabled ({self.fm_cfg['inference']})")
+            logger.info(f"Flow matching: sampling enabled ({inf})")
 
     def _fm_gather(self, batch, stream_name, step, attr, lens, num_channels, device):
         """Concatenate fm_target / fm_prev of all samples (NaN where missing): (N, C)."""
@@ -859,10 +865,19 @@ class Model(torch.nn.Module):
             return pred
 
         # sampling: num_members ODE integrations, each conditioned on its own previous state
+        fm = self.fm_sampling_cfg
         inf = fm["inference"]
         n_mem, rho = int(inf["num_members"]), float(inf["noise_correlation"])
         state = fm_state.setdefault(stream_name, {"prev": None, "eps": None})
         prev = state["prev"]
+        if prev is not None and prev.shape[1] != n_pts:
+            # the members cannot continue from their own state: x_{k-1} read from the data is
+            # the TRUE previous state, i.e. a leak of the truth into the forecast
+            logger.warning(
+                f"Flow matching {stream_name}, step {step}: {n_pts} target points, "
+                f"{prev.shape[1]} at the previous step; the members restart from the TRUE "
+                "previous state (leak of the truth)"
+            )
         if prev is None or prev.shape[1] != n_pts:
             # first step: analysis x_{k-1} (truth at the initial time) for every member
             prev = torch.nan_to_num(x_prev).unsqueeze(0).expand(n_mem, -1, -1)

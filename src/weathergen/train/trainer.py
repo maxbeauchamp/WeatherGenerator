@@ -27,6 +27,7 @@ import weathergen.common.config as config
 from weathergen.common.config import Config
 from weathergen.datasets.multi_stream_data_sampler import MultiStreamDataSampler
 from weathergen.model.ema import EMAModel
+from weathergen.model.flow_matching import get_flow_matching_config
 from weathergen.model.model_interface import (
     init_model_and_shard,
 )
@@ -596,6 +597,7 @@ class Trainer(TrainerBase):
 
         cf = self.cf
         self.model.eval()
+        fm_cores = self._set_fm_validation_sampling()
 
         # free cyclic garbage holding CUDA tensors in THIS process: otherwise the forked loader
         # workers may collect it and crash with 'CUDA error: initialization error'
@@ -674,8 +676,29 @@ class Trainer(TrainerBase):
                 self._log_terminal(0, mini_epoch, VAL)
                 self._log(VAL)
 
+        for core in fm_cores:
+            core.set_flow_matching_sampling(False)
         # avoid that there is a systematic bias in the validation subset
         self.dataset_val.advance()
+
+    def _set_fm_validation_sampling(self):
+        """
+        Flow matching: ODE sampling in validation when flow_matching.validation.sampling is on
+        (the one-pass loss sees x_k through x_t: a denoising error, not a forecast error).
+        Switches the model and the EMA model, unless they already sample (inference).
+        Returns the switched models, to switch back after the validation.
+        """
+        val = get_flow_matching_config(self.cf)["validation"]
+        if not val["sampling"]:
+            return []
+        models = [self.model, getattr(self.ema_model, "ema_model", None)]
+        cores = [getattr(m, "module", m) for m in models if m is not None]
+        cores = [c for c in cores if getattr(c, "fm_conditioners", None) is not None]
+        cores = [c for c in cores if not c.fm_sampling]
+        inference = {"num_members": val["num_members"], "num_steps": val["num_steps"]}
+        for core in cores:
+            core.set_flow_matching_sampling(True, inference)
+        return cores
 
     def _get_full_model_state_dict(self):
         maybe_sharded_sd = (

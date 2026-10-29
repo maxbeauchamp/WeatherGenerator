@@ -82,6 +82,11 @@ flow_matching:
     num_steps: 16
     solver: heun               # heun | euler
     noise_correlation: 0.0     # AR(1) correlation of the noise across lead times
+  validation:                  # validation during training
+    sampling: False            # False: one-pass loss, x_t contains x_k (denoising error, not a
+                               # forecast error); True: ODE solver as at inference
+    num_members: 2
+    num_steps: 4
 # Partition of unity of the decoders: every target point is decoded as if it belonged to each
 # nearby cell and the outputs are blended with continuous weights (Wendland, on the cell
 # centres), to remove HEALPix seams. No parameters, but not the identity at start: needs a

@@ -9,6 +9,8 @@
 
 """Unit tests for the flow-matching decoders (weathergen.model.flow_matching)."""
 
+from types import SimpleNamespace
+
 import pytest
 import torch
 from omegaconf import OmegaConf
@@ -121,3 +123,78 @@ def test_stream_data_fm_fields_device():
     sd.add_fm_values(1, torch.zeros(5, C), torch.ones(5, C))
     sd.to_device("cpu")
     assert sd.fm_prev[1].shape == (5, C) and sd.fm_target[0] is None
+
+
+def test_config_validation_sampling():
+    assert _cfg()["validation"] == {"sampling": False, "num_members": 2, "num_steps": 4}
+    assert _cfg(validation={"sampling": True})["validation"]["sampling"] is True
+    with pytest.raises(AssertionError):
+        _cfg(validation={"num_steps": 0})
+
+
+class _FakeModel:
+    """The attributes of Model that predict_flow_matching reads."""
+
+    _fm_gather = Model._fm_gather
+    predict_flow_matching = Model.predict_flow_matching
+    set_flow_matching_sampling = Model.set_flow_matching_sampling
+
+    def __init__(self, cfg):
+        self.fm_cfg = self.fm_sampling_cfg = cfg
+        self.fm_sampling, self.training = False, False
+        self.fm_conditioners = {"CICE": fm.FlowMatchingConditioner(C, DIM, "CICE")}
+
+
+def _fm_batch(n_per_step):
+    """One sample of the stream CICE with n_per_step[k] target points at step k."""
+    sd = StreamData(0, 1, len(n_per_step), 12)
+    for k, n in enumerate(n_per_step):
+        sd.add_fm_values(k, torch.randn(n, C), torch.randn(n, C))
+    return SimpleNamespace(samples=[SimpleNamespace(streams_data={"CICE": sd})])
+
+
+def _predict(model, batch, step, n, fm_state):
+    def decode_points(cond):
+        return cond[:, :C].unsqueeze(0)  # (1, N, C)
+
+    return model.predict_flow_matching(
+        "CICE", step, batch, torch.zeros(n, DIM), decode_points, [n], fm_state
+    )
+
+
+def test_sampling_settings_of_the_validation():
+    model = _FakeModel(_cfg())
+    model.set_flow_matching_sampling(True, {"num_members": 2, "num_steps": 2})
+    assert model.fm_sampling and model.fm_sampling_cfg["inference"]["num_members"] == 2
+    assert model.fm_cfg["inference"]["num_members"] == 8  # the inference settings stay
+    assert _predict(model, _fm_batch([5]), 0, 5, {}).shape == (2, 5, C)
+
+
+def test_warning_when_the_members_restart_from_the_truth(monkeypatch):
+    import weathergen.model.model as model_module  # noqa: PLC0415
+
+    seen = []
+    monkeypatch.setattr(model_module.logger, "warning", seen.append)
+    model = _FakeModel(_cfg())
+    model.set_flow_matching_sampling(True, {"num_members": 2, "num_steps": 1})
+    batch, state = _fm_batch([5, 5, 4]), {}
+    for step, n in enumerate([5, 5]):
+        _predict(model, batch, step, n, state)
+    assert seen == []  # same points: every member continues from its own state
+    _predict(model, batch, 2, 4, state)
+    assert len(seen) == 1 and "TRUE previous state" in seen[0]
+
+
+def test_validation_switches_only_models_not_sampling():
+    from weathergen.train.trainer import Trainer  # noqa: PLC0415
+
+    cf = OmegaConf.create({"flow_matching": {"enabled": True, "streams": ["CICE"],
+                                             "validation": {"sampling": True}}})  # fmt: skip
+    model, ema = _FakeModel(_cfg()), _FakeModel(_cfg())
+    ema.fm_sampling = True  # already sampling (inference): left as is
+    trainer = SimpleNamespace(cf=cf, model=model, ema_model=SimpleNamespace(ema_model=ema))
+    cores = Trainer._set_fm_validation_sampling(trainer)
+    assert cores == [model] and model.fm_sampling_cfg["inference"]["num_steps"] == 4
+    cf.flow_matching.validation.sampling = False
+    model.fm_sampling = False
+    assert Trainer._set_fm_validation_sampling(trainer) == [] and not model.fm_sampling

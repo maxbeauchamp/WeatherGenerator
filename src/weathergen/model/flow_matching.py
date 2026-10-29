@@ -72,6 +72,9 @@ _DEFAULTS = {
     "loss_weighting": "x",
     "max_loss_weight": 100.0,
     "inference": {"num_members": 8, "num_steps": 16, "solver": "heun", "noise_correlation": 0.0},
+    # validation during training: the one-pass loss sees x_k through x_t (a denoising error, not
+    # a forecast error); sampling=True runs the ODE solver instead, with few members and steps
+    "validation": {"sampling": False, "num_members": 2, "num_steps": 4},
 }
 
 
@@ -81,6 +84,7 @@ def get_flow_matching_config(cf) -> dict:
     out = {k: (dict(v) if isinstance(v, dict) else v) for k, v in _DEFAULTS.items()}
     out["logit_normal"] = dict(_DEFAULTS["logit_normal"])
     out["inference"] = dict(_DEFAULTS["inference"])
+    out["validation"] = dict(_DEFAULTS["validation"])
     if not fm or not fm.get("enabled", False):
         return out
     for k in ("target", "time_sampling", "prev_noise_std", "loss_weighting", "max_loss_weight"):
@@ -90,6 +94,8 @@ def get_flow_matching_config(cf) -> dict:
         out["logit_normal"].update(dict(fm.get("logit_normal")))
     if fm.get("inference", None):
         out["inference"].update(dict(fm.get("inference")))
+    if fm.get("validation", None):
+        out["validation"].update(dict(fm.get("validation")))
     out["streams"] = list(fm.get("streams", []) or [])
     out["enabled"] = len(out["streams"]) > 0
 
@@ -99,6 +105,8 @@ def get_flow_matching_config(cf) -> dict:
     assert out["inference"]["solver"] in ("heun", "euler"), out["inference"]["solver"]
     assert int(out["inference"]["num_steps"]) >= 1 and int(out["inference"]["num_members"]) >= 1
     assert 0.0 <= float(out["inference"]["noise_correlation"]) < 1.0
+    val = out["validation"]
+    assert int(val["num_steps"]) >= 1 and int(val["num_members"]) >= 1
     return out
 
 

@@ -472,7 +472,7 @@ def _add_fm(m, channels, dim, sampling, members=2):
     )
 
     fm = {"enabled": True, "streams": ["S"], "inference": {"num_members": members, "num_steps": 2}}
-    m.fm_cfg = get_flow_matching_config(OmegaConf.create({"flow_matching": fm}))
+    m.fm_cfg = m.fm_sampling_cfg = get_flow_matching_config(OmegaConf.create({"flow_matching": fm}))
     m.fm_conditioners = {"S": FlowMatchingConditioner(channels, dim, "S")}
     m.fm_sampling = sampling
     m.training = False
