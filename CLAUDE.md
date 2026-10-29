@@ -20,6 +20,7 @@ default** (no module created, original code path when off):
 **Docs live in `../WeatherGenerator-configs/docs/`:**
 - `seaice/README.md` is the index;
 - each `seaice/xp_0*.md` follows the same plan: goal, method (maths, figures), implementation (files touched), configs, running, status/decisions/open questions, where the outputs are;
+- `seaice/roadmap.md` is the visual guide (Mermaid): pipeline hooks, one card per experiment, run lineage;
 - `seaice/runbook.md` holds the shared commands and troubleshooting;
 - `handoff.md` holds the current state, the preferences and the next actions.
 
@@ -45,7 +46,8 @@ work, before committing.** Do not leave a feature, config or run undocumented.
   - the commands (§5);
   - the status, decisions and open questions (§6);
   - **the outputs table (§7): add a row for every new run (checkpoints, logs, results, eval)**;
-  - the run table of `seaice/README.md`.
+  - the run table of `seaice/README.md`;
+  - `seaice/roadmap.md` when files, scripts, runs or output paths change (card, pipeline, lineage).
 - **Figures**: `docs/seaice/figs/xp_NN_*.png`, produced by a script in `figs/src/`. Sketches and
   toy problems must be labelled as such, never presented as model output.
 - **Shared commands or a new pitfall**: `seaice/runbook.md`.
