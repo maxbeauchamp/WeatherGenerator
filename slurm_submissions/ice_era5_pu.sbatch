@@ -3,6 +3,8 @@
 # MLflow). One node, 4 GH200 GPUs (one task per GPU). Phases chained by submit_ice_era5_pu.sh:
 #   pucheck (PU on the base, no training) | pu1 -> puinfer | pufm1 -> pufm2 -> pufinfer
 #   | eval (after puinfer + pufinfer) | seams (after everything)
+# PU fine-tuning of the FM model (submit_ice_era5_fmpu.sh), from ice_era5_fm2:
+#   fpusmoke | fpu1 -> fpuinfer -> fpueval | fpu1 -> fpulong (90 days) | fpuseams (after everything)
 # Needs the base inference inf_ice_era5_base (phase binfer of ice_era5_fm.sbatch, same dates).
 # Submit from a LOGIN node:  bash slurm_submissions/submit_ice_era5_pu.sh
 # Logs: /e/scratch/weatherai/shared_work/logs/ice_era5_pu/<jobname>_<jobid>.out|.err
@@ -17,7 +19,7 @@
 #SBATCH --time=12:00:00
 
 set -euo pipefail
-PHASE=${PHASE:?PHASE = pucheck | pu1 | puinfer | pufm1 | pufm2 | pufinfer | eval | seams}
+PHASE=${PHASE:?PHASE = pucheck | pu1 | puinfer | pufm1 | pufm2 | pufinfer | eval | seams | fpusmoke | fpu1 | fpuinfer | fpulong | fpueval | fpuseams}
 WG=${WG:-/e/project1/weatherai/beauchamp1/WeatherGenerator}
 CFG=../WeatherGenerator-configs/config
 WD=/e/scratch/weatherai/shared_work
@@ -29,6 +31,11 @@ BINF_ID=${BINF_ID:-inf_ice_era5_base}   # deterministic base (ice_era5_fm.sbatch
 FINF_ID=${FINF_ID:-inf_ice_era5_fm}     # FM without PU (ice_era5_fm.sbatch, phase finfer)
 P0INF_ID=${P0INF_ID:-inf_ice_era5_pu0}  # PU on the base, before any training
 PINF_ID=${PINF_ID:-inf_ice_era5_pu}; PFINF_ID=${PFINF_ID:-inf_ice_era5_pufm}
+# PU fine-tuning of the FM model (submit_ice_era5_fmpu.sh): from ice_era5_fm2, the model of finfer
+FM2_ID=${FM2_ID:-ice_era5_fm2};       FM2_EPOCH=${FM2_EPOCH:-4}
+FPU1_ID=${FPU1_ID:-ice_era5_fmpu1};   FPU1_EPOCHS=${FPU1_EPOCHS:-3}
+FPINF_ID=${FPINF_ID:-inf_ice_era5_fmpu}
+LONG_STARTS=(${LONG_STARTS:-2023-03-01 2023-09-01})   # 90-day rollouts, as in xp_03 and xp_04
 # all inferences on the SAME 32 start dates of 2023 as binfer (no shuffling)
 SAME_DATES=(test_config.shuffle=False test_config.samples_per_mini_epoch=32 test_config.output.num_samples=32)
 PU_ON=(partition_of_unity.enabled=True "partition_of_unity.streams=[CICE]")
@@ -47,7 +54,21 @@ run() {  # one task per GPU (Slurm binds one GPU per task -> it is cuda:0 for th
     echo "task $SLURM_PROCID: CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset} LOCAL_RANK=$LOCAL_RANK"
     exec "$@"' _ "$@"
 }
+run1() {  # one task on one GPU (90-day rollouts: one sample per start date)
+  srun --ntasks=1 --gres=gpu:1 --kill-on-bad-exit=1 bash -c '
+    export LOCAL_RANK=0 RANK=0 WORLD_SIZE=1
+    exec "$@"' _ "$@"
+}
 zip0() { ls "$WD/results/$1/"validation_chkpt*_rank0000.zip 2>/dev/null | head -n 1; }
+long_id() { echo "$1_long_${2//-/}"; }   # long_id inf_ice_era5_fmpu 2023-03-01
+seams_of() {  # seams_of <out_dir> <run_id:label>...  (runs that exist; FM: mean + 2 members)
+  local out=$1 zips=() labels=(); shift
+  for pair in "$@"; do
+    z=$(zip0 "${pair%%:*}"); [[ -n "$z" ]] && { zips+=("$z"); labels+=("${pair##*:}"); }
+  done
+  uv run --offline python scripts/seam_diagnostic.py "${zips[@]}" --labels "${labels[@]}" \
+    --stream CICE --channels aice hi --out-dir "$out" --maps --zoom -20 60 70 85
+}
 echo "phase=$PHASE node=$SLURM_JOB_NODELIST tasks=$SLURM_NTASKS"
 
 case "$PHASE" in
@@ -118,6 +139,71 @@ PY
     uv run --offline python scripts/seam_diagnostic.py "${zips[@]}" --labels "${labels[@]}" \
       --stream CICE --channels aice hi --out-dir "$WD/results/seams_ice_era5" \
       --maps --zoom -20 60 70 85   # side-by-side maps; zoom: Fram Strait - Barents Sea
+    ;;
+  # ---- PU fine-tuning of the FM model (finetune_ice_era5_fmpu.yml, submit_ice_era5_fmpu.sh) ----
+  fpusmoke)  # 1 short mini-epoch: PU + FM, validation with the ODE solver (new code path)
+    run uv run --offline train_continue --from-run-id "$FM2_ID" --mini-epoch "$FM2_EPOCH" \
+      --run-id ice_era5_fmpu_smoke --config "$CFG/finetune_ice_era5_fmpu.yml" \
+      --options training_config.num_mini_epochs=1 training_config.samples_per_mini_epoch=64 \
+                validation_config.samples_per_mini_epoch=8
+    ;;
+  fpu1)
+    run uv run --offline train_continue --from-run-id "$FM2_ID" --mini-epoch "$FM2_EPOCH" --run-id "$FPU1_ID" \
+      --config "$CFG/finetune_ice_era5_fmpu.yml" --options training_config.num_mini_epochs="$FPU1_EPOCHS"
+    ;;
+  fpuinfer)  # 8 members x 16 Heun steps, same 32 dates as finfer (inf_ice_era5_fm)
+    rm -rf "$WD/results/$FPINF_ID"
+    run uv run --offline inference --from-run-id "$FPU1_ID" --mini-epoch "$FPU1_EPOCHS" --run-id "$FPINF_ID" \
+      --config "$CFG/inference_cice_fm.yml" --options "${SAME_DATES[@]}"
+    ;;
+  fpulong)  # 90-day rollouts from LONG_STARTS, one GPU each, then the figures of xp_04 §5
+    for start in "${LONG_STARTS[@]}"; do
+      end=$(date -d "$start + 100 days" +%Y-%m-%d)
+      rid=$(long_id "$FPINF_ID" "$start")
+      rm -rf "$WD/results/$rid"
+      run1 uv run --offline inference --from-run-id "$FPU1_ID" --mini-epoch "$FPU1_EPOCHS" --run-id "$rid" \
+        --config "$CFG/inference_cice_fm.yml" \
+        --options test_config.start_date="${start}T00:00" test_config.end_date="${end}T00:00" \
+                  test_config.shuffle=False test_config.samples_per_mini_epoch=1 \
+                  test_config.output.num_samples=1 test_config.forecast.num_steps=90 \
+                  data_loading.num_workers=1
+      uv run --offline python scripts/plot_seaice.py "$(zip0 "$rid")" --samples 0 --vars aice hi \
+        --days 1 15 30 60 90 --animate --timeseries --ens --label "$rid" \
+        --out-dir "$WD/results/$rid/figs_seaice"
+    done
+    ;;
+  fpueval)  # FastEval, 7 days: FM + PU, FM, deterministic base (runs that exist), with persistence
+    mkdir -p config/evaluate
+    EV="config/evaluate/eval_${FPINF_ID}_vs_fm.yml"
+    uv run --offline python - "$CFG/evaluate/eval_ice_era5.yml" "$EV" "$WD" \
+      "$FPINF_ID:ice + ERA5, FM + PU fine-tuned from FM (8 members)" \
+      "$FINF_ID:ice + ERA5, flow matching (8 members)" "$BINF_ID:ice + ERA5, deterministic base" <<'PY'
+import os, sys, yaml
+tpl, out, wd, *runs = sys.argv[1:]
+txt = open(tpl).read()
+def cfg(rid): return yaml.safe_load(txt.replace("__RUN__", rid).replace("__WD__", wd))
+c = None
+for r in runs:
+    rid, label = r.split(":", 1)
+    if not os.path.isdir(f"{wd}/results/{rid}"):
+        print("skip (no results):", rid); continue
+    rc = cfg(rid)
+    if c is None: c = rc
+    else: c["run_ids"][rid] = rc["run_ids"][rid]
+    c["run_ids"][rid]["label"] = label
+yaml.safe_dump(c, open(out, "w"), sort_keys=False)
+print("eval config:", out, list(c["run_ids"]))
+PY
+    uv run --offline evaluate --config "$EV"
+    echo ">> scores and figures in $WD/results/$FPINF_ID/plots/"
+    ;;
+  fpuseams)  # seams: 7 days (base, FM, FM + PU) and every 90-day start date (base, FM, FM + PU)
+    seams_of "$WD/results/seams_ice_era5_fmpu" "$BINF_ID:base" "$FINF_ID:fm" "$FPINF_ID:fm_pu"
+    for start in "${LONG_STARTS[@]}"; do
+      seams_of "$WD/results/seams_ice_era5_fmpu_long_${start//-/}" \
+        "$(long_id inf_ice_era5 "$start"):base" "$(long_id "$FINF_ID" "$start"):fm" \
+        "$(long_id "$FPINF_ID" "$start"):fm_pu"
+    done
     ;;
   *) echo "unknown PHASE=$PHASE"; exit 1 ;;
 esac

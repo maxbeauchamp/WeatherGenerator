@@ -98,6 +98,7 @@ uv run --offline inference --from-run-id <run> --mini-epoch <N> --run-id inf_<x>
 bash slurm_submissions/submit_ice_era5.sh      # ice + ERA5 base (S1 -> S2)
 bash slurm_submissions/submit_ice_era5_fm.sh   # FM chain on ice_era5_s2
 bash slurm_submissions/submit_ice_era5_pu.sh   # partition of unity (+ FM) chain on ice_era5_s2
+bash slurm_submissions/submit_ice_era5_fmpu.sh # partition of unity on the FM model ice_era5_fm2 (SMOKE=1 first)
 bash slurm_submissions/submit_ocean_pu.sh      # partition of unity on d5xirkmf, surface decoder (SMOKE=1 first)
 ```
 
