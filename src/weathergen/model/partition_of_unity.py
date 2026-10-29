@@ -141,20 +141,27 @@ class PUGeometry:
         psi = wendland(dist / self.h) * valid
         return cands, psi / psi.sum(-1, keepdim=True)
 
-    def pairs(self, xyz: torch.Tensor, cell: torch.Tensor):
+    def pairs(self, xyz: torch.Tensor, cell: torch.Tensor, chunk: int = 1 << 17):
         """
         (point, cell) pairs with a non-zero weight, sorted by cell (then by point).
         Returns point_idx (P,) int64, pair_cell (P,) int64, weight (P,) float32,
         pairs_per_cell (N,) int32 (lengths of the self-attention groups).
+        The weights are computed by chunks of points: (chunk, 25, 3) float64 temporaries
+        (~250 MB) instead of ~2 GB for 1 M points, in every data-loader worker.
         """
-        cands, w = self.weights(xyz, cell)
-        q, j = torch.nonzero(w > 0, as_tuple=True)
-        pair_cell = cands[q, j]
+        qs, cells, ws = [], [], []
+        for s in range(0, xyz.shape[0], chunk):
+            cands, w = self.weights(xyz[s : s + chunk], cell[s : s + chunk])
+            q, j = torch.nonzero(w > 0, as_tuple=True)
+            qs.append(q + s)
+            cells.append(cands[q, j])
+            ws.append(w[q, j].to(torch.float32))
+        q, pair_cell, weight = torch.cat(qs), torch.cat(cells), torch.cat(ws)
         order = torch.from_numpy(np.lexsort((q.numpy(), pair_cell.numpy())))
-        q, j, pair_cell = q[order], j[order], pair_cell[order]
+        q, pair_cell, weight = q[order], pair_cell[order], weight[order]
         n = self.ctrs.shape[0]
         pairs_per_cell = torch.bincount(pair_cell, minlength=n).to(torch.int32)
-        return q, pair_cell, w[q, j].to(torch.float32), pairs_per_cell
+        return q, pair_cell, weight, pairs_per_cell
 
 
 # the target coordinate encoding (tokenizer_utils.get_target_coords_local) is

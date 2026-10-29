@@ -279,6 +279,9 @@ class Trainer(TrainerBase):
             "shuffle": False,
             "num_workers": cf.data_loading.num_workers,
         }
+        # batches ready per worker (torch default 2): 1 saves CPU memory when loading is slow
+        if cf.data_loading.get("prefetch_factor") is not None:
+            loader_params["prefetch_factor"] = cf.data_loading.prefetch_factor
         self.data_loader = torch.utils.data.DataLoader(self.dataset, **loader_params, sampler=None)
         self.data_loader_validation = torch.utils.data.DataLoader(
             self.dataset_val, **loader_params, sampler=None

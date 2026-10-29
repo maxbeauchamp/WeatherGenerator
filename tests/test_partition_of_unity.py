@@ -179,6 +179,13 @@ def test_pairs(geo):
     assert 2.5 < len(point_idx) / len(xyz) < 4.0
 
 
+def test_pairs_by_chunks_are_identical(geo):
+    _, _, xyz, cell = random_points(5000, seed=3)
+    ref = geo.pairs(xyz, cell, chunk=len(xyz))
+    for got in (geo.pairs(xyz, cell, chunk=777), geo.pairs(xyz, cell, chunk=1)):
+        assert all(torch.equal(a, b) for a, b in zip(ref, got, strict=True))
+
+
 def test_blend_is_continuous_on_toy_decoder(geo):
     """Toy check (not the model): with cell-wise decoders D_c(x) = a_c + <b_c, x> (a different
     smooth function per cell), the PU blend is continuous while the original (own cell only)
