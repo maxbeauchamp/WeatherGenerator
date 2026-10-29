@@ -50,6 +50,17 @@ run() {  # one task per GPU (Slurm binds one GPU per task -> it is cuda:0 for th
     echo "task $SLURM_PROCID: CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset} LOCAL_RANK=$LOCAL_RANK"
     exec "$@"' _ "$@"
 }
+guard() {  # a killed data-loader worker can leave every rank hung (no task exits): cancel the job;
+           # log the node memory every 5 min
+  local err n=0; err=$(scontrol show job "$SLURM_JOB_ID" | sed -n 's/.*StdErr=//p')
+  while sleep 60; do
+    if grep -qE "killed by signal|Watchdog caught collective" "$err" 2>/dev/null; then
+      echo "guard: failure in $err, cancelling job $SLURM_JOB_ID"; sleep 20; scancel "$SLURM_JOB_ID"; return
+    fi
+    (( n++ % 5 == 0 )) && echo "guard: $(date +%H:%M) memory $(free -g | awk '/Mem:/{print $3" / "$2" GB"}')"
+  done
+}
+guard &
 zip0() { ls "$WD/results/$1/"validation_chkpt*_rank0000.zip 2>/dev/null | head -n 1; }
 seams() {  # seams <out_dir> <run_id:label>...
   local out=$1 zips=() labels=(); shift
