@@ -69,7 +69,7 @@ seams() {  # seams <out_dir> <run_id:label>...
   done
   uv run --offline python scripts/seam_diagnostic.py "${zips[@]}" --labels "${labels[@]}" \
     --stream "$STREAM" --channels thetao_0.5 so_0.5 zos --healpix-level 5 --out-dir "$out" \
-    --maps --zoom -80 -30 25 55 --zoom -80 -30 -65 -35   # side-by-side maps; zooms: Gulf Stream, south of South America (Drake Passage, Brazil-Malvinas confluence)
+    --maps --zoom -80 -30 25 55 --zoom -80 -45 -70 -52   # side-by-side maps; zooms: Gulf Stream, Drake Passage
 }
 echo "phase=$PHASE node=$SLURM_JOB_NODELIST tasks=$SLURM_NTASKS"
 

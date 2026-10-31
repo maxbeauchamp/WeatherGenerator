@@ -41,7 +41,9 @@ work, before committing.** Do not leave a feature, config or run undocumented.
   - add it to the tables and the dependency graph of `seaice/README.md`, and its tags to the file map.
 - **Change to an existing experiment** (code, config, new run, result, decision): update the
   matching sections of its xp file:
-  - the files table (§3);
+  - §3.1, the code function by function (file, function, new / modified, what, why) and §3.2,
+    the other files; check with `uv run --offline python scripts/code_changes.py --base 5680e9c`
+    (5680e9c = last commit before the sea-ice work) and update the index in `roadmap.md` §8;
   - the configs (§4);
   - the commands (§5);
   - the status, decisions and open questions (§6);
