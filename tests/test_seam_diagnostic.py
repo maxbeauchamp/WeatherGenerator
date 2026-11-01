@@ -111,3 +111,20 @@ def test_polar_figure_and_animation(field, tmp_path):
 
         out = P.save_animation(pf.fig, draw, 3, str(tmp_path / f"a_{name}"), 2.0, "gif")
         assert out.endswith(".gif") and pathlib.Path(out).stat().st_size > 10_000
+
+
+def test_texture_smooth_vs_textured(field, tmp_path):
+    """Toy: the target has small scales; a prediction without them has texture ratios < 1."""
+    lat, lon, t, geo = field
+    fine = 0.2 * np.sin(np.deg2rad(lat) * 400) * np.cos(np.deg2rad(lon) * 200)
+    m_same = S.seam_measures(geo, t + fine, t + fine)
+    m_smooth = S.seam_measures(geo, t, t + fine)
+    assert abs(m_same["grad_ratio"] - 1) < 1e-9 and abs(m_same["small_scale_ratio"] - 1) < 1e-9
+    assert m_smooth["grad_ratio"] < 0.7 and m_smooth["small_scale_ratio"] < 0.7
+    tv = {"fsteps": [0, 1], "grad_ratio": [1.0, 0.5], "small_scale_ratio": [1.0, 0.4]}
+    summary = {"fm": {"hi/mean": {"texture_vs_lead": tv}, "hi/member0": {"texture_vs_lead": tv}}}
+    import matplotlib.pyplot as plt  # noqa: PLC0415
+
+    S.plot_texture(summary, "hi", tmp_path, plt)
+    assert (tmp_path / "texture_hi.png").exists()
+    assert len((tmp_path / "texture_hi.csv").read_text().splitlines()) == 5

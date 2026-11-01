@@ -75,6 +75,9 @@ flow_matching:
   time_sampling: logit_normal  # logit_normal | uniform
   logit_normal: {mean: 0.0, std: 1.0}
   prev_noise_std: 0.0          # noise on x_k-1 during training (exposure bias)
+  prev_rollout:                # training: x_k-1 = the model's own detached previous prediction
+    prob: 0.0                  # probability per forecast step (0: always the true x_k-1)
+    num_steps: 0               # 0: one-pass prediction of step k-1 | n: n-step Euler sample
   loss_weighting: x            # x: plain MSE (x-prediction) | v: velocity loss, 1/(1-t)^2
   max_loss_weight: 100.0       # clip of the v weighting
   inference:

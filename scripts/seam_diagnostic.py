@@ -17,6 +17,12 @@ Seams are jumps of the decoded field at the boundaries of the HEALPix cells of t
    separation r (in cell sizes): the real-space counterpart of the power spectrum (no
    regridding of the curvilinear grid). < 1 at small r: too smooth; bumps near r ~ 1: blocks.
 
+4. Texture vs lead time (rollouts lose their small scales): per forecast step,
+       grad ratio        = mean |grad y| / mean |grad t|     (point_gradient, common points)
+       small-scale ratio = mean of S_y(r) / S_t(r) over r < 1 cell (sub-cell scales)
+   ~1: the prediction is as textured as the target; < 1: too smooth. Figure texture_<ch>.png and
+   texture_<ch>.csv (ensemble mean, solid; members, dashed: only the members keep a texture).
+
 Ensembles (flow matching): the measures are computed on the ensemble mean and on each of the
 first --members members (seams in the members).
 
@@ -133,7 +139,17 @@ def seam_measures(geo: Geometry, y, t):
     with np.errstate(invalid="ignore", divide="ignore"):
         s_ratio = np.where(s_t > 0, s_y / s_t, np.nan)
 
+    gy = point_gradient(geo, np.where(ok, y, np.nan))
+    gt = point_gradient(geo, np.where(ok, t, np.nan))
+    both = np.isfinite(gy) & np.isfinite(gt)
+    gt_mean = gt[both].mean() if both.any() else 0.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        small = float(np.nanmean(s_ratio[: int(np.searchsorted(R_BINS, 1.0))]))
+
     return {
+        "grad_ratio": float(gy[both].mean() / gt_mean) if gt_mean > 0 else float("nan"),
+        "small_scale_ratio": small,
         "seam_index": r_cross / r_within if r_within > 0 else float("nan"),
         "ratio_cross": r_cross,
         "ratio_within": r_within,
@@ -552,6 +568,7 @@ def run(zips, labels, stream, channels, samples, fsteps, level, members, out_dir
         store = W.Store(zp)
         sel = [s for s in store.samples if not samples or s in samples]
         res = {}  # (channel, kind) -> list of measures
+        lead = {}  # (channel, kind) -> {forecast step: list of measures}
         for sample in sel:
             for f in store.fsteps(sample, stream):
                 if fsteps and f not in fsteps:
@@ -578,7 +595,9 @@ def run(zips, labels, stream, channels, samples, fsteps, level, members, out_dir
                         for m in range(min(members, pred.shape[-1])):
                             kinds[f"member{m}"] = pred[:, m]
                     for kind, y in kinds.items():
-                        res.setdefault((ch, kind), []).append(seam_measures(geo, y, tv))
+                        m = seam_measures(geo, y, tv)
+                        res.setdefault((ch, kind), []).append(m)
+                        lead.setdefault((ch, kind), {}).setdefault(f, []).append(m)
         store.close()
         summary[label] = {
             f"{ch}/{kind}": {
@@ -587,6 +606,13 @@ def run(zips, labels, stream, channels, samples, fsteps, level, members, out_dir
                 "rmse": float(_mean(v, "rmse")),
                 "rmse_vs_boundary_distance": _mean(v, "rmse_vs_boundary_distance").tolist(),
                 "structure_ratio": _mean(v, "structure_ratio").tolist(),
+                "texture_vs_lead": {
+                    "fsteps": sorted(lead[(ch, kind)]),
+                    **{
+                        k: [float(_mean(lead[(ch, kind)][f], k)) for f in sorted(lead[(ch, kind)])]
+                        for k in ("grad_ratio", "small_scale_ratio")
+                    },
+                },
             }
             for (ch, kind), v in res.items()
         }
@@ -629,6 +655,40 @@ def plot(summary, channels, out_dir):
         fig.tight_layout()
         fig.savefig(out_dir / f"seams_{ch}.png", dpi=130)
         plt.close(fig)
+        plot_texture(summary, ch, out_dir, plt)
+
+
+def plot_texture(summary, ch, out_dir, plt):
+    """Texture vs lead time: ensemble mean (solid) and members (dashed), one colour per run."""
+    keys = ("grad_ratio", "small_scale_ratio")
+    fig, ax = plt.subplots(1, 2, figsize=(10, 3.8))
+    rows = []
+    for i, (label, s) in enumerate(summary.items()):
+        for kind, v in sorted(s.items()):
+            if not kind.startswith(f"{ch}/"):
+                continue
+            kind = kind.split("/", 1)[1]
+            tv = v["texture_vs_lead"]
+            mean = kind == "mean"
+            for a, k in zip(ax, keys, strict=True):
+                a.plot(tv["fsteps"], tv[k], "-" if mean else "--", color=f"C{i}",
+                       lw=1.6 if mean else 0.8, label=label if mean else None)  # fmt: skip
+            cols = zip(tv["fsteps"], *(tv[k] for k in keys), strict=True)
+            rows += [[label, kind, f, g, r] for f, g, r in cols]
+    for a, k in zip(ax, ("mean |grad pred| / mean |grad target|",
+                         "S_pred / S_target at r < 1 cell"), strict=True):  # fmt: skip
+        a.axhline(1.0, color="0.5", lw=0.8)
+        a.set_xlabel("forecast step")
+        a.set_ylabel(k)
+        a.legend(fontsize=8)
+    ax[0].set_title(f"{ch}: texture vs lead (mean solid, members dashed)")
+    ax[1].set_title(f"{ch}: sub-cell variance ratio")
+    fig.tight_layout()
+    fig.savefig(out_dir / f"texture_{ch}.png", dpi=130)
+    plt.close(fig)
+    with open(out_dir / f"texture_{ch}.csv", "w") as fh:
+        fh.write("run,kind,fstep,grad_ratio,small_scale_ratio\n")
+        fh.writelines(f"{r[0]},{r[1]},{r[2]},{r[3]:.6g},{r[4]:.6g}\n" for r in rows)
 
 
 def main():

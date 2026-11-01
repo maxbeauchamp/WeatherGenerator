@@ -136,6 +136,7 @@ class _FakeModel:
     """The attributes of Model that predict_flow_matching reads."""
 
     _fm_gather = Model._fm_gather
+    _fm_rollout_prev = Model._fm_rollout_prev
     predict_flow_matching = Model.predict_flow_matching
     set_flow_matching_sampling = Model.set_flow_matching_sampling
 
@@ -198,3 +199,34 @@ def test_validation_switches_only_models_not_sampling():
     cf.flow_matching.validation.sampling = False
     model.fm_sampling = False
     assert Trainer._set_fm_validation_sampling(trainer) == [] and not model.fm_sampling
+
+
+def test_config_prev_rollout():
+    assert _cfg()["prev_rollout"] == {"prob": 0.0, "num_steps": 0}
+    assert _cfg(prev_rollout={"prob": 0.5})["prev_rollout"] == {"prob": 0.5, "num_steps": 0}
+    with pytest.raises(AssertionError):
+        _cfg(prev_rollout={"prob": 1.5})
+
+
+@pytest.mark.parametrize("num_steps", [0, 2])
+def test_prev_rollout_conditions_on_the_own_prediction(monkeypatch, num_steps):
+    seen, orig = [], fm.training_inputs
+
+    def spy(x_target, x_prev, t, cfg, generator=None):
+        seen.append(x_prev.clone())
+        return orig(x_target, x_prev, t, cfg, generator)
+
+    monkeypatch.setattr(fm, "training_inputs", spy)
+    batch = _fm_batch([5, 5, 5])
+    truth = batch.samples[0].streams_data["CICE"].fm_prev
+    model = _FakeModel(_cfg(prev_rollout={"prob": 1.0, "num_steps": num_steps}))
+    model.training, state = True, {}
+    for step in range(3):
+        _predict(model, batch, step, 5, state)
+    assert torch.equal(seen[0], truth[0])  # first step: the analysis
+    for k in (1, 2):  # zero-initialised conditioner: the own prediction is 0
+        assert torch.count_nonzero(seen[k]) == 0 and not torch.equal(seen[k], truth[k])
+    model.training, seen[:] = False, []  # validation pass: always the true x_{k-1}
+    for step in range(2):
+        _predict(model, batch, step, 5, {})
+    assert torch.equal(seen[1], truth[1])

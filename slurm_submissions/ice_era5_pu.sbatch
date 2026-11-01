@@ -35,6 +35,13 @@ PINF_ID=${PINF_ID:-inf_ice_era5_pu}; PFINF_ID=${PFINF_ID:-inf_ice_era5_pufm}
 FM2_ID=${FM2_ID:-ice_era5_fm2};       FM2_EPOCH=${FM2_EPOCH:-4}
 FPU1_ID=${FPU1_ID:-ice_era5_fmpu1};   FPU1_EPOCHS=${FPU1_EPOCHS:-3}
 FPINF_ID=${FPINF_ID:-inf_ice_era5_fmpu}
+FPU1_CFG=${FPU1_CFG:-finetune_ice_era5_fmpu.yml}
+# another fine-tuning on the same phases (submit_ice_era5_fmpuro.sh): compared with FM + PU
+FPU_LABEL=${FPU_LABEL:-fm_pu}; FPU_DESC=${FPU_DESC:-FM + PU fine-tuned from FM}
+FMPU_REF=inf_ice_era5_fmpu   # FM + PU of xp_05, in the comparisons of the other fine-tunings
+ref_of() {  # ref_of <run_id or ""> <label>: "<id>:<label>" if FPINF_ID is another fine-tuning
+  [[ "$FPINF_ID" != "$FMPU_REF" ]] && echo "${1:-$FMPU_REF}:$2" || true
+}
 LONG_STARTS=(${LONG_STARTS:-2023-03-01 2023-09-01})   # 90-day rollouts, as in xp_03 and xp_04
 # all inferences on the SAME 32 start dates of 2023 as binfer (no shuffling)
 SAME_DATES=(test_config.shuffle=False test_config.samples_per_mini_epoch=32 test_config.output.num_samples=32)
@@ -148,13 +155,13 @@ PY
   # ---- PU fine-tuning of the FM model (finetune_ice_era5_fmpu.yml, submit_ice_era5_fmpu.sh) ----
   fpusmoke)  # 1 short mini-epoch: PU + FM, validation with the ODE solver (new code path)
     run uv run --offline train_continue --from-run-id "$FM2_ID" --mini-epoch "$FM2_EPOCH" \
-      --run-id ice_era5_fmpu_smoke --config "$CFG/finetune_ice_era5_fmpu.yml" \
+      --run-id "${FPU1_ID%1}_smoke" --config "$CFG/$FPU1_CFG" \
       --options training_config.num_mini_epochs=1 training_config.samples_per_mini_epoch=64 \
                 validation_config.samples_per_mini_epoch=8
     ;;
   fpu1)
     run uv run --offline train_continue --from-run-id "$FM2_ID" --mini-epoch "$FM2_EPOCH" --run-id "$FPU1_ID" \
-      --config "$CFG/finetune_ice_era5_fmpu.yml" --options training_config.num_mini_epochs="$FPU1_EPOCHS"
+      --config "$CFG/$FPU1_CFG" --options training_config.num_mini_epochs="$FPU1_EPOCHS"
     ;;
   fpuinfer)  # 8 members x 16 Heun steps, same 32 dates as finfer (inf_ice_era5_fm)
     rm -rf "$WD/results/$FPINF_ID"
@@ -180,9 +187,10 @@ PY
   fpueval)  # FastEval, 7 days: FM + PU, FM, deterministic base (runs that exist), with persistence
     mkdir -p config/evaluate
     EV="config/evaluate/eval_${FPINF_ID}_vs_fm.yml"
+    ref=(); [[ -n "$(ref_of "" x)" ]] && ref=("$FMPU_REF:ice + ERA5, FM + PU fine-tuned from FM (8 members)")
     uv run --offline python - "$CFG/evaluate/eval_ice_era5.yml" "$EV" "$WD" \
-      "$FPINF_ID:ice + ERA5, FM + PU fine-tuned from FM (8 members)" \
-      "$FINF_ID:ice + ERA5, flow matching (8 members)" "$BINF_ID:ice + ERA5, deterministic base" <<'PY'
+      "$FPINF_ID:ice + ERA5, $FPU_DESC (8 members)" \
+      "${ref[@]}" "$FINF_ID:ice + ERA5, flow matching (8 members)" "$BINF_ID:ice + ERA5, deterministic base" <<'PY'
 import os, sys, yaml
 tpl, out, wd, *runs = sys.argv[1:]
 txt = open(tpl).read()
@@ -202,12 +210,14 @@ PY
     uv run --offline evaluate --config "$EV"
     echo ">> scores and figures in $WD/results/$FPINF_ID/plots/"
     ;;
-  fpuseams)  # seams: 7 days (base, FM, FM + PU) and every 90-day start date (base, FM, FM + PU)
-    seams_of "$WD/results/seams_ice_era5_fmpu" "$BINF_ID:base" "$FINF_ID:fm" "$FPINF_ID:fm_pu"
+  fpuseams)  # seams: 7 days and every 90-day start date (base, FM, [FM + PU,] FPINF_ID)
+    # with texture vs lead time (texture_<ch>.png): small scales kept or lost in the rollouts
+    seams_of "$WD/results/seams_${FPINF_ID#inf_}" "$BINF_ID:base" "$FINF_ID:fm" \
+      $(ref_of "" fm_pu) "$FPINF_ID:$FPU_LABEL"
     for start in "${LONG_STARTS[@]}"; do
-      seams_of "$WD/results/seams_ice_era5_fmpu_long_${start//-/}" --animate \
+      seams_of "$WD/results/seams_${FPINF_ID#inf_}_long_${start//-/}" --animate \
         "$(long_id inf_ice_era5 "$start"):base" "$(long_id "$FINF_ID" "$start"):fm" \
-        "$(long_id "$FPINF_ID" "$start"):fm_pu"
+        $(ref_of "$(long_id "$FMPU_REF" "$start")" fm_pu) "$(long_id "$FPINF_ID" "$start"):$FPU_LABEL"
     done
     ;;
   *) echo "unknown PHASE=$PHASE"; exit 1 ;;

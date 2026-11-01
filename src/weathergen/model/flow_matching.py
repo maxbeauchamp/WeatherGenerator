@@ -33,6 +33,12 @@ Sampling: Euler/Heun ODE from t = 0 to 1 with v_hat = (y_hat - x_t) / (1 - t); t
 the decoder output directly (no singularity at t = 1). Members differ by their noise draws; each
 member is conditioned on its own previous sample (temporal coherence).
 
+Rollout of the condition (prev_rollout): with teacher forcing the decoder learns to copy the small
+scales of the TRUE x_{k-1}; in a rollout x_{k-1} is its own (smoother) prediction and the small
+scales fade within a few days. With probability prob per training step k > first, x_{k-1} is
+replaced by the detached prediction of step k-1 (its one-pass output, or an n-step Euler sample),
+so that the decoder learns to regenerate the small scales from the latent and the noise.
+
 Zero-initialised conditioning: at start the decoder ignores (x_t, x_{k-1}, t), so the model is
 exactly the deterministic model it is fine-tuned from (all members = deterministic prediction).
 
@@ -45,6 +51,9 @@ Config (main config):
       time_sampling: logit_normal  # logit_normal | uniform
       logit_normal: {mean: 0.0, std: 1.0}
       prev_noise_std: 0.0          # noise on x_{k-1} during training (exposure bias)
+      prev_rollout:                # training: x_{k-1} = the model's own previous prediction
+        prob: 0.0                  # probability per forecast step (0: always the true x_{k-1})
+        num_steps: 0               # 0: one-pass prediction of step k-1 | n: n-step Euler sample
       loss_weighting: x            # x (plain MSE) | v (velocity loss, weight 1/(1-t)^2)
       max_loss_weight: 100.0       # clip of the v weighting
       inference:
@@ -69,6 +78,7 @@ _DEFAULTS = {
     "time_sampling": "logit_normal",
     "logit_normal": {"mean": 0.0, "std": 1.0},
     "prev_noise_std": 0.0,
+    "prev_rollout": {"prob": 0.0, "num_steps": 0},
     "loss_weighting": "x",
     "max_loss_weight": 100.0,
     "inference": {"num_members": 8, "num_steps": 16, "solver": "heun", "noise_correlation": 0.0},
@@ -85,6 +95,7 @@ def get_flow_matching_config(cf) -> dict:
     out["logit_normal"] = dict(_DEFAULTS["logit_normal"])
     out["inference"] = dict(_DEFAULTS["inference"])
     out["validation"] = dict(_DEFAULTS["validation"])
+    out["prev_rollout"] = dict(_DEFAULTS["prev_rollout"])
     if not fm or not fm.get("enabled", False):
         return out
     for k in ("target", "time_sampling", "prev_noise_std", "loss_weighting", "max_loss_weight"):
@@ -96,6 +107,8 @@ def get_flow_matching_config(cf) -> dict:
         out["inference"].update(dict(fm.get("inference")))
     if fm.get("validation", None):
         out["validation"].update(dict(fm.get("validation")))
+    if fm.get("prev_rollout", None):
+        out["prev_rollout"].update(dict(fm.get("prev_rollout")))
     out["streams"] = list(fm.get("streams", []) or [])
     out["enabled"] = len(out["streams"]) > 0
 
@@ -107,6 +120,8 @@ def get_flow_matching_config(cf) -> dict:
     assert 0.0 <= float(out["inference"]["noise_correlation"]) < 1.0
     val = out["validation"]
     assert int(val["num_steps"]) >= 1 and int(val["num_members"]) >= 1
+    ro = out["prev_rollout"]
+    assert 0.0 <= float(ro["prob"]) <= 1.0 and int(ro["num_steps"]) >= 0, ro
     return out
 
 

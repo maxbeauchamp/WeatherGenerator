@@ -591,6 +591,7 @@ class Model(torch.nn.Module):
                     f"Flow matching decoders for {list(self.fm_conditioners.keys())}: "
                     f"target={self.fm_cfg['target']}, "
                     f"loss_weighting={self.fm_cfg['loss_weighting']}, "
+                    f"prev_rollout={self.fm_cfg['prev_rollout']}, "
                     f"inference={self.fm_cfg['inference']}"
                 )
 
@@ -830,6 +831,23 @@ class Model(torch.nn.Module):
             parts.append(v.to(device=device, dtype=torch.float32))
         return torch.cat(parts) if parts else torch.zeros((0, num_channels), device=device)
 
+    @torch.no_grad()
+    def _fm_rollout_prev(self, denoise, pred, x_prev, n_pts, num_ch, num_steps):
+        """
+        Training, flow_matching.prev_rollout: the condition x_{k-1} of the next step, i.e. the
+        detached prediction of this step: the one-pass output (num_steps 0) or an Euler sample.
+        """
+        if num_steps == 0:
+            return pred[0].detach().float()
+        fm = {**self.fm_cfg, "inference": {**self.fm_cfg["inference"], "num_steps": num_steps,
+                                           "solver": "euler"}}  # fmt: skip
+        eps = torch.randn((n_pts, num_ch), device=pred.device)
+
+        def denoise_1(x_t, x_prev_c, t):
+            return denoise(x_t, x_prev_c, t.expand(n_pts))[0].float()
+
+        return fmatch.sample_member(denoise_1, torch.nan_to_num(x_prev), eps, fm)
+
     def predict_flow_matching(
         self, stream_name, step, batch, tc_tokens, decode_points, t_coords_lens, fm_state
     ) -> torch.Tensor:
@@ -858,9 +876,19 @@ class Model(torch.nn.Module):
             )
             t_s = fmatch.sample_flow_time(len(t_coords_lens), fm, dev)
             t_pts = torch.repeat_interleave(t_s, torch.tensor(t_coords_lens, device=dev))
+            rollout = fm_state.setdefault("train_prev", {}) if self.training else {}
+            own = rollout.pop(stream_name, None)
+            if own is not None and own.shape == x_prev.shape:
+                # prev_rollout: the model's own prediction of step k-1 (NaN kept where missing)
+                x_prev = torch.where(torch.isnan(x_prev), x_prev, own)
             x_t, x_prev_c, _ = fmatch.training_inputs(x_tgt, x_prev, t_pts, fm)
             pred = denoise(x_t, x_prev_c, t_pts)
             if self.training:
+                ro = fm["prev_rollout"]
+                if float(ro["prob"]) > 0.0 and torch.rand(()).item() < float(ro["prob"]):
+                    rollout[stream_name] = self._fm_rollout_prev(
+                        denoise, pred, x_prev, n_pts, num_ch, int(ro["num_steps"])
+                    )
                 pred = fmatch.apply_loss_weighting(pred, x_tgt, t_pts, fm)
             return pred
 
