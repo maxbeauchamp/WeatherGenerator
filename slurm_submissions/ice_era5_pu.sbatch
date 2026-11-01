@@ -59,7 +59,9 @@ run1() {  # one task on one GPU (90-day rollouts: one sample per start date)
     export LOCAL_RANK=0 RANK=0 WORLD_SIZE=1
     exec "$@"' _ "$@"
 }
-zip0() { ls "$WD/results/$1/"validation_chkpt*_rank0000.zip 2>/dev/null | head -n 1; }
+zip0() {  # first zip of a run, empty if none (|| true: with pipefail a failing ls stops the job)
+  ls "$WD/results/$1/"validation_chkpt*_rank0000.zip 2>/dev/null | head -n 1 || true
+}
 long_id() { echo "$1_long_${2//-/}"; }   # long_id inf_ice_era5_fmpu 2023-03-01
 seams_of() {  # seams_of <out_dir> <run_id:label>...  (runs that exist; FM: mean + 2 members)
   local out=$1 zips=() labels=(); shift

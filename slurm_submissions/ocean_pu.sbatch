@@ -61,7 +61,9 @@ guard() {  # a killed data-loader worker can leave every rank hung (no task exit
   done
 }
 guard &
-zip0() { ls "$WD/results/$1/"validation_chkpt*_rank0000.zip 2>/dev/null | head -n 1; }
+zip0() {  # first zip of a run, empty if none (|| true: with pipefail a failing ls stops the job)
+  ls "$WD/results/$1/"validation_chkpt*_rank0000.zip 2>/dev/null | head -n 1 || true
+}
 seams() {  # seams <out_dir> <run_id:label>...
   local out=$1 zips=() labels=(); shift
   for pair in "$@"; do
