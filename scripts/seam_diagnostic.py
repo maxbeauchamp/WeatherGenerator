@@ -258,10 +258,207 @@ def map_figure(geo, lat, lon, target, preds, title, path, box, res, level, cell_
     plt.close(fig)
 
 
+# ---- polar views (sea ice): the projection, axes and animation of plot_seaice.py -------------
+def _polar_inverse(grid, x, y):
+    """lat, lon (deg) of projected points of a plot_seaice.PolarGrid."""
+    if grid.crs is not None:
+        import cartopy.crs as ccrs  # noqa: PLC0415
+
+        p = ccrs.PlateCarree().transform_points(grid.crs, x.ravel(), y.ravel())
+        return p[:, 1].reshape(x.shape), p[:, 0].reshape(x.shape)
+    import plot_seaice as P  # noqa: PLC0415
+
+    rho = np.hypot(x, y)
+    lat = 90.0 - 2.0 * np.rad2deg(np.arctan(rho / (2.0 * P.R_EARTH)))
+    return lat, np.rad2deg(np.arctan2(x, -y))
+
+
+def _box_xy(grid, box, n=50):
+    """projected bounding box (x0, x1, y0, y1) of a lon-lat box."""
+    lon0, lon1, lat0, lat1 = box
+    lo, la = np.linspace(lon0, lon1, n), np.linspace(lat0, lat1, n)
+    lon = np.concatenate([lo, lo, np.full(n, lon0), np.full(n, lon1)])
+    lat = np.concatenate([np.full(n, lat0), np.full(n, lat1), la, la])
+    x, y = grid.project(lon, lat)
+    return float(x.min()), float(x.max()), float(y.min()), float(y.max())
+
+
+class PolarView:
+    """North polar stereographic images (plot_seaice.PolarGrid, lat >= lat_min) and the HEALPix
+    cell boundaries of its pixels."""
+
+    def __init__(self, lat, lon, lat_min, res_km, level):
+        import plot_seaice as P  # noqa: PLC0415
+
+        self.grid = P.PolarGrid(lat, lon, lat_min, res_km)
+        self.npts = len(lat)
+        c = np.linspace(-self.grid.radius, self.grid.radius, self.grid.shape[0])
+        gx, gy = np.meshgrid(c, c[::-1])  # as in PolarGrid: row 0 = top
+        plat, plon = _polar_inverse(self.grid, gx, gy)
+        cells = cell_and_offsets(plat.ravel(), _wrap(plon.ravel()), level)[0].reshape(gx.shape)
+        edge = np.zeros(gx.shape, bool)
+        edge[:, 1:] |= cells[:, 1:] != cells[:, :-1]
+        edge[1:, :] |= cells[1:, :] != cells[:-1, :]
+        self.edges = edge & self.grid.inside
+
+    def image(self, values):
+        return self.grid.remap(np.asarray(values, np.float64))
+
+
+def _zoom_axes(fig, rect, grid, box):
+    """axes of a lon-lat box in the polar projection (no circular boundary)."""
+    import matplotlib.pyplot as plt  # noqa: PLC0415
+    import plot_seaice as P  # noqa: PLC0415
+
+    x0, x1, y0, y1 = _box_xy(grid, box)
+    if P.HAS_CARTOPY:
+        ax = fig.add_axes(rect, projection=grid.crs)
+        ax.set_extent([x0, x1, y0, y1], crs=grid.crs)
+        ax.add_feature(P.cfeature.LAND.with_scale("50m"), facecolor=P.LAND, edgecolor="none",
+                       zorder=0)  # fmt: skip
+    else:
+        ax = fig.add_axes(rect)
+        ax.set_xlim(x0, x1)
+        ax.set_ylim(y0, y1)
+        ax.axis("off")
+    ax.set_facecolor(P.LAND)
+    plt.setp(ax.spines.values(), linewidth=0.6)
+    return ax
+
+
+class PolarFigure:
+    """3 rows (field, prediction - target, |grad|) x (target + runs) in the polar projection.
+    The images are updated in place: stills and animation frames share the colour scales
+    (plot_seaice.VARS when the channel is known, else set from the first frame)."""
+
+    ROWS = ("field", "prediction - target", "|grad| (per cell size)")
+
+    def __init__(self, view, labels, ch, box=None, dpi=110):
+        import matplotlib  # noqa: PLC0415
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt  # noqa: PLC0415
+        import plot_seaice as P  # noqa: PLC0415
+
+        self.view, self.cols = view, ["target", *labels]
+        g = view.grid
+        spec = P.VARS.get(ch, {})
+        if box is None:
+            ar = 1.0
+        else:
+            x0, x1, y0, y1 = _box_xy(g, box)
+            ar = (y1 - y0) / max(x1 - x0, 1.0)
+        m = 2.4 if box is None else 3.0  # panel width (inches)
+        hp = m * ar
+        lft, rgt, bot, top, gap = 0.35, 0.8, 0.1, 0.55, 0.08
+        n = len(self.cols)
+        w, h = lft + n * m + (n - 1) * gap + rgt, bot + 3 * hp + 2 * gap + top
+        self.fig = plt.figure(figsize=(w, h), dpi=dpi, facecolor="white")
+
+        def rect(r, c):
+            return [(lft + c * (m + gap)) / w, (bot + (2 - r) * (hp + gap)) / h, m / w, hp / h]
+
+        dmax = spec.get("dmax")
+        self.kw = [
+            {
+                "cmap": spec.get("cmap", "viridis"),
+                "vmin": spec.get("vmin"),
+                "vmax": spec.get("vmax"),
+            },
+            {"cmap": "RdBu_r", "vmin": -dmax if dmax else None, "vmax": dmax},
+            {"cmap": "magma", "vmin": 0.0, "vmax": None},
+        ]
+        nan = np.full(g.shape, np.nan)
+        edges = np.where(view.edges, 1.0, np.nan)
+        self.im = {}
+        for r, row in enumerate(self.ROWS):
+            for c, label in enumerate(self.cols):
+                if r == 1 and label == "target":
+                    continue
+                if box is None:
+                    ax = P.make_axes(self.fig, rect(r, c), g)
+                else:
+                    ax = _zoom_axes(self.fig, rect(r, c), g, box)
+                self.im[r, label] = P.imshow(ax, nan, g, **self.kw[r])
+                if box is not None:  # cell boundaries in the zooms only (too dense in full)
+                    P.imshow(ax, edges, g, cmap="Greys", vmin=0, vmax=1, alpha=0.35)
+                P.decorate(ax, g)
+                if r == 0:
+                    ax.set_title(label, fontsize=9)
+            y = (bot + (2 - r) * (hp + gap) + hp / 2) / h
+            self.fig.text(0.12 / w, y, row, rotation=90, va="center", ha="center", fontsize=8)
+            cax = self.fig.add_axes(
+                [(w - rgt + 0.12) / w, (bot + (2 - r) * (hp + gap) + 0.1 * hp) / h,
+                 0.1 / w, 0.8 * hp / h]
+            )  # fmt: skip
+            self.fig.colorbar(self.im[r, self.cols[-1]], cax=cax)
+        self.title = self.fig.text(lft / w, 1 - 0.12 / h, "", fontsize=10, va="top")
+        self.edges_txt = "" if box is None else "  (grey: HEALPix cell boundaries)"
+        self.scaled = False
+
+    def draw(self, geo, target, preds, title):
+        v = self.view
+        cols = {"target": target, **preds}
+        data = [
+            {k: v.image(y) for k, y in cols.items()},
+            {k: v.image(y - target) for k, y in preds.items()},
+            {k: v.image(point_gradient(geo, y)) for k, y in cols.items()},
+        ]
+        if not self.scaled:  # missing colour limits: from the first frame, then fixed
+
+            def pct(arrs, q):
+                a = np.concatenate([x[np.isfinite(x)] for x in arrs] + [np.zeros(1)])
+                return float(np.percentile(a, q))
+
+            kf, ke, kg = self.kw
+            if kf["vmin"] is None:
+                kf["vmin"], kf["vmax"] = pct([data[0]["target"]], 1), pct([data[0]["target"]], 99)
+            if ke["vmax"] is None:
+                e = max(pct([np.abs(x) for x in data[1].values()], 99), 1e-12)
+                ke["vmin"], ke["vmax"] = -e, e
+            if kg["vmax"] is None:
+                kg["vmax"] = max(pct(list(data[2].values()), 99), 1e-12)
+            for (r, _), im in self.im.items():
+                im.set_clim(self.kw[r]["vmin"], self.kw[r]["vmax"])
+            self.scaled = True
+        inside = v.grid.inside
+        for (r, label), im in self.im.items():
+            if label in data[r]:
+                im.set_data(np.where(inside, data[r][label], np.nan))
+        self.title.set_text(title + self.edges_txt)
+
+
+def _fields(zw, stores, labels, sample, stream, f, ch):
+    """lat, lon, target and predictions (member mean) of one channel at step f, on the target
+    points of the first run; None if missing."""
+    ref = stores[0].dataset(sample, stream, f, "target")
+    if ref is None or ch not in ref["channels"]:
+        return None
+    lat, lon = ref["coords"][:, 0].astype(np.float64), ref["coords"][:, 1].astype(np.float64)
+    target = ref["data"][:, ref["channels"].index(ch), 0].astype(np.float64)
+    preds = {}
+    for st, label in zip(stores, labels, strict=True):
+        p = st.dataset(sample, stream, f, "prediction")
+        if p is None or ch not in p["channels"]:
+            continue
+        j = zw.match_points(p["coords"][:, 0], p["coords"][:, 1], ref["coords"])
+        y = np.full(len(lat), np.nan)
+        ok = j >= 0
+        y[ok] = p["data"][j[ok], p["channels"].index(ch), :].astype(np.float64).mean(-1)
+        preds[label] = y
+    return lat, lon, target, preds
+
+
 def maps(
-    zips, labels, stream, channels, samples, fsteps, level, zooms, out_dir, res_full, res_zoom
-):
-    """Side-by-side maps of all runs for one sample (the first common one) and a few lead times."""
+    zips, labels, stream, channels, samples, fsteps, level, zooms, out_dir, res_full, res_zoom,
+    polar=None, res_km=12.5, animate=False, fps=4.0, anim_format="gif",
+):  # fmt: skip
+    """
+    Side-by-side maps of all runs for one sample (the first common one) and a few lead times.
+    polar (lat_min): north polar stereographic views (sea ice) instead of lon-lat images; the
+    zoom boxes are drawn in the same projection. animate: one animation per channel and view
+    over all the lead times (polar views only).
+    """
     import wg_zip2netcdf as W  # noqa: PLC0415
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -272,38 +469,68 @@ def maps(
         print("maps: no sample common to all runs")  # noqa: T201
         return
     sample = sel[0]
-    steps = stores[0].fsteps(sample, stream)
+    all_steps = stores[0].fsteps(sample, stream)
+    steps = all_steps
     if fsteps:
         steps = [f for f in steps if f in fsteps]
     elif steps:
         steps = sorted({steps[0], steps[len(steps) // 2], steps[-1]})
+    polar_views = [("polar", None)] + [(f"zoom{i}", tuple(z)) for i, z in enumerate(zooms)]
+    view = None  # the polar grid of the target points (fixed points: built once)
     for f in steps:
-        ref = stores[0].dataset(sample, stream, f, "target")
-        if ref is None:
-            continue
-        lat, lon = ref["coords"][:, 0].astype(np.float64), ref["coords"][:, 1].astype(np.float64)
-        geo = Geometry(lat, lon, level)
+        geo = None
         for ch in channels:
-            if ch not in ref["channels"]:
+            fields = _fields(W, stores, labels, sample, stream, f, ch)
+            if fields is None:
                 continue
-            target = ref["data"][:, ref["channels"].index(ch), 0].astype(np.float64)
-            preds = {}
-            for st, label in zip(stores, labels, strict=True):
-                p = st.dataset(sample, stream, f, "prediction")
-                if p is None or ch not in p["channels"]:
-                    continue
-                j = W.match_points(p["coords"][:, 0], p["coords"][:, 1], ref["coords"])
-                y = np.full(len(lat), np.nan)
-                ok = j >= 0
-                y[ok] = p["data"][j[ok], p["channels"].index(ch), :].astype(np.float64).mean(-1)
-                preds[label] = y
-            views = [("full", data_box(lat, lon), res_full, False)]
-            views += [(f"zoom{i}", tuple(z), res_zoom, True) for i, z in enumerate(zooms)]
-            for name, box, res, cell_edges in views:
+            lat, lon, target, preds = fields
+            if geo is None:
+                geo = Geometry(lat, lon, level)
+            if polar is None:
+                views = [("full", data_box(lat, lon), res_full, False)]
+                views += [(f"zoom{i}", tuple(z), res_zoom, True) for i, z in enumerate(zooms)]
+                for name, box, res, cell_edges in views:
+                    path = out_dir / f"maps_{ch}_s{sample}_f{f}_{name}.png"
+                    title = f"{stream} {ch}, sample {sample}, step {f}, {name}"
+                    map_figure(geo, lat, lon, target, preds, title, path, box, res, level,
+                               cell_edges)  # fmt: skip
+                    print(f">> {path}")  # noqa: T201
+                continue
+            if view is None or view.npts != len(lat):
+                view = PolarView(lat, lon, polar, res_km, level)
+            for name, box in polar_views:
+                pf = PolarFigure(view, list(preds), ch, box)
+                pf.draw(geo, target, preds, f"{stream} {ch}, sample {sample}, step {f}, {name}")
                 path = out_dir / f"maps_{ch}_s{sample}_f{f}_{name}.png"
-                title = f"{stream} {ch}, sample {sample}, step {f}, {name}"
-                map_figure(geo, lat, lon, target, preds, title, path, box, res, level, cell_edges)
+                pf.fig.savefig(path, dpi=130)
+                pf.fig.clf()
                 print(f">> {path}")  # noqa: T201
+    if animate and polar is not None:
+        import matplotlib.pyplot as plt  # noqa: PLC0415
+        import plot_seaice as P  # noqa: PLC0415
+
+        for ch in channels:
+            first = _fields(W, stores, labels, sample, stream, all_steps[0], ch)
+            if first is None:
+                continue
+            lat, lon, _, preds = first
+            geo = Geometry(lat, lon, level)
+            if view is None or view.npts != len(lat):
+                view = PolarView(lat, lon, polar, res_km, level)
+            for name, box in polar_views:
+                pf = PolarFigure(view, list(preds), ch, box, dpi=90)
+
+                def draw(i, pf=pf, ch=ch, name=name, geo=geo, view=view):
+                    fields = _fields(W, stores, labels, sample, stream, all_steps[i], ch)
+                    if fields is None or len(fields[0]) != view.npts:
+                        return  # missing step or other points: keep the previous frame
+                    title = f"{stream} {ch}, sample {sample}, step {all_steps[i]}, {name}"
+                    pf.draw(geo, fields[2], fields[3], title)
+
+                stem = out_dir / f"anim_{ch}_s{sample}_{name}"
+                out = P.save_animation(pf.fig, draw, len(all_steps), str(stem), fps, anim_format)
+                plt.close(pf.fig)
+                print(f">> {out}")  # noqa: T201
     for st in stores:
         st.close()
 
@@ -428,13 +655,25 @@ def main():
     )
     ap.add_argument("--res-full", type=float, default=0.25, help="pixel of the full view (deg)")
     ap.add_argument("--res-zoom", type=float, default=0.1, help="pixel of the zoom views (deg)")
+    ap.add_argument("--polar", type=float, metavar="LAT_MIN",
+                    help="sea ice: north polar stereographic maps of lat >= LAT_MIN (as "
+                         "plot_seaice.py); the zoom boxes in the same projection")  # fmt: skip
+    ap.add_argument("--res-km", type=float, default=12.5, help="pixel of the polar views (km)")
+    ap.add_argument(
+        "--animate",
+        action="store_true",
+        help="with --polar: one animation per channel and view over all lead times",
+    )
+    ap.add_argument("--fps", type=float, default=4.0)
+    ap.add_argument("--anim-format", choices=["gif", "mp4", "auto"], default="gif")
     a = ap.parse_args()
     labels = a.labels or [z.parent.name for z in a.zips]
     run(a.zips, labels, a.stream, a.channels, a.samples, a.fsteps, a.healpix_level, a.members,
         a.out_dir)  # fmt: skip
-    if a.maps:
+    if a.maps or a.animate:
         maps(a.zips, labels, a.stream, a.channels, a.samples, a.map_fsteps, a.healpix_level,
-             a.zoom, a.out_dir, a.res_full, a.res_zoom)  # fmt: skip
+             a.zoom, a.out_dir, a.res_full, a.res_zoom, a.polar, a.res_km, a.animate, a.fps,
+             a.anim_format)  # fmt: skip
 
 
 if __name__ == "__main__":

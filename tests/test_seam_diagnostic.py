@@ -89,3 +89,25 @@ def test_map_figure(field, tmp_path):
         assert path.stat().st_size > 10_000
     grid = S.ImageGrid(lat, lon, (0, 20, 65, 75), 0.25, LEVEL)
     assert grid.valid.mean() > 0.95 and grid.edges.any()
+
+
+def test_polar_figure_and_animation(field, tmp_path):
+    import plot_seaice as P
+
+    lat, lon, t, geo = field
+    view = S.PolarView(lat, lon, 50.0, 50.0, LEVEL)
+    assert view.edges.any() and (view.grid.map >= 0).any()
+    blocky = t + 0.05 * np.random.default_rng(2).standard_normal(12 * 4**LEVEL)[geo.cell]
+    preds = {"base": blocky, "pu": t + 0.01}
+    for name, box in [("polar", None), ("zoom", (0, 20, 65, 75))]:
+        pf = S.PolarFigure(view, list(preds), "hi", box, dpi=60)
+        pf.draw(geo, t, preds, "toy")
+        path = tmp_path / f"p_{name}.png"
+        pf.fig.savefig(path)
+        assert path.stat().st_size > 10_000
+
+        def draw(i, pf=pf):
+            pf.draw(geo, t + 0.1 * i, {k: v + 0.1 * i for k, v in preds.items()}, f"frame {i}")
+
+        out = P.save_animation(pf.fig, draw, 3, str(tmp_path / f"a_{name}"), 2.0, "gif")
+        assert out.endswith(".gif") and pathlib.Path(out).stat().st_size > 10_000

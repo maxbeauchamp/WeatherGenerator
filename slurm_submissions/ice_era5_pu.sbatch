@@ -63,13 +63,16 @@ zip0() {  # first zip of a run, empty if none (|| true: with pipefail a failing 
   ls "$WD/results/$1/"validation_chkpt*_rank0000.zip 2>/dev/null | head -n 1 || true
 }
 long_id() { echo "$1_long_${2//-/}"; }   # long_id inf_ice_era5_fmpu 2023-03-01
-seams_of() {  # seams_of <out_dir> <run_id:label>...  (runs that exist; FM: mean + 2 members)
-  local out=$1 zips=() labels=(); shift
+# sea ice: polar maps as in plot_seaice.py; zoom Fram Strait - Barents Sea
+SEAM_MAPS=(--maps --polar 45 --zoom -20 60 70 85)
+seams_of() {  # seams_of <out_dir> [--animate] <run_id:label>...  (runs that exist; FM: mean + 2 members)
+  local out=$1 zips=() labels=() extra=(); shift
+  [[ "${1:-}" == --animate ]] && { extra=(--animate); shift; }
   for pair in "$@"; do
     z=$(zip0 "${pair%%:*}"); [[ -n "$z" ]] && { zips+=("$z"); labels+=("${pair##*:}"); }
   done
   uv run --offline python scripts/seam_diagnostic.py "${zips[@]}" --labels "${labels[@]}" \
-    --stream CICE --channels aice hi --out-dir "$out" --maps --zoom -20 60 70 85
+    --stream CICE --channels aice hi --out-dir "$out" "${SEAM_MAPS[@]}" "${extra[@]}"
 }
 echo "phase=$PHASE node=$SLURM_JOB_NODELIST tasks=$SLURM_NTASKS"
 
@@ -82,7 +85,7 @@ case "$PHASE" in
       "$(zip0 "$BINF_ID")" "$(zip0 "$P0INF_ID")" || true
     uv run --offline python scripts/seam_diagnostic.py "$(zip0 "$BINF_ID")" "$(zip0 "$P0INF_ID")" \
       --labels base pu_start --stream CICE --channels aice hi --out-dir "$WD/results/$P0INF_ID/seams" \
-      --maps --zoom -20 60 70 85
+      "${SEAM_MAPS[@]}"
     ;;
   pu1)   # CICE decoder only, PU on (finetune_ice_era5_pu.yml)
     run uv run --offline train_continue --from-run-id "$BASE_ID" --mini-epoch "$BASE_EPOCH" --run-id "$PU1_ID" \
@@ -140,7 +143,7 @@ PY
     done
     uv run --offline python scripts/seam_diagnostic.py "${zips[@]}" --labels "${labels[@]}" \
       --stream CICE --channels aice hi --out-dir "$WD/results/seams_ice_era5" \
-      --maps --zoom -20 60 70 85   # side-by-side maps; zoom: Fram Strait - Barents Sea
+      "${SEAM_MAPS[@]}"   # side-by-side polar maps; zoom: Fram Strait - Barents Sea
     ;;
   # ---- PU fine-tuning of the FM model (finetune_ice_era5_fmpu.yml, submit_ice_era5_fmpu.sh) ----
   fpusmoke)  # 1 short mini-epoch: PU + FM, validation with the ODE solver (new code path)
@@ -202,7 +205,7 @@ PY
   fpuseams)  # seams: 7 days (base, FM, FM + PU) and every 90-day start date (base, FM, FM + PU)
     seams_of "$WD/results/seams_ice_era5_fmpu" "$BINF_ID:base" "$FINF_ID:fm" "$FPINF_ID:fm_pu"
     for start in "${LONG_STARTS[@]}"; do
-      seams_of "$WD/results/seams_ice_era5_fmpu_long_${start//-/}" \
+      seams_of "$WD/results/seams_ice_era5_fmpu_long_${start//-/}" --animate \
         "$(long_id inf_ice_era5 "$start"):base" "$(long_id "$FINF_ID" "$start"):fm" \
         "$(long_id "$FPINF_ID" "$start"):fm_pu"
     done

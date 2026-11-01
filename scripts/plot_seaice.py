@@ -331,11 +331,12 @@ def fixed_ticks(cb, vmin, vmax, n=5):
     cb.set_ticks(np.linspace(vmin, vmax, n))
 
 
-def save_animation(fig, draw, n, stem, fps):
-    """mp4 with ffmpeg; otherwise a GIF with ONE palette shared by all frames.
+def save_animation(fig, draw, n, stem, fps, fmt="auto"):
+    """fmt auto: mp4 with ffmpeg, otherwise a GIF; gif / mp4: forced.
+    The GIF has ONE palette shared by all frames.
     (matplotlib's PillowWriter quantises every frame to its own 256-colour palette: the same
     value then gets a different colour from frame to frame, colour bars included.)"""
-    if animation.writers.is_available("ffmpeg"):
+    if fmt == "mp4" or (fmt == "auto" and animation.writers.is_available("ffmpeg")):
         out = f"{stem}.mp4"
         anim = animation.FuncAnimation(fig, draw, frames=range(n), blit=False)
         anim.save(out, writer=animation.FFMpegWriter(fps=fps, bitrate=6000,
@@ -565,6 +566,8 @@ def main():
     ap.add_argument("--days", nargs="*", type=int, default=[1, 5, 10], help="lead days for still frames")
     ap.add_argument("--animate", action="store_true", help="animation over all lead times")
     ap.add_argument("--fps", type=float, default=2.0)
+    ap.add_argument("--anim-format", choices=["auto", "gif", "mp4"], default="auto",
+                    help="auto: mp4 if ffmpeg is available, else gif")
     ap.add_argument("--timeseries", action="store_true", help="add the extent (or RMSE) curve")
     ap.add_argument("--pdf", action="store_true", help="also save still frames as PDF")
     ap.add_argument("--lat-min", type=float, default=45.0)
@@ -631,7 +634,7 @@ def render(d, var, grid, a, f):
             fr.fig.savefig(f"{stem}_d{day:02d}.pdf")
         print("saved", f"{stem}_d{day:02d}.png")
     if a.animate:
-        out = save_animation(fr.fig, fr.draw, d["pred"].shape[0], stem, a.fps)
+        out = save_animation(fr.fig, fr.draw, d["pred"].shape[0], stem, a.fps, a.anim_format)
         print("saved", out)
     plt.close(fr.fig)
 
@@ -909,7 +912,7 @@ def render_ens_anim(d, var, grid, a):
             fr.fig.savefig(f"{stem}_d{day:02d}.png")
             print("saved", f"{stem}_d{day:02d}.png")
     if a.animate:
-        out = save_animation(fr.fig, fr.draw, fr.n, stem, a.fps)
+        out = save_animation(fr.fig, fr.draw, fr.n, stem, a.fps, a.anim_format)
         print("saved", out)
     plt.close(fr.fig)
 
