@@ -15,8 +15,7 @@ default** (no module created, original code path when off):
 | `xp_02_d5xirkmf_cice.md` CICE in `d5xirkmf` | `streams/earthgen3_cice/` | configs only |
 | `xp_03_forcing_reinjection.md` | `forcing_reinjection` | `model/forcing_injection.py`, `model/model.py` (`forward`, `inject_forcing`), `datasets/multi_stream_data_sampler.py` (`_build_forcing_samples`), `datasets/batch.py` |
 | `xp_04_flow_matching.md` | `flow_matching` | `model/flow_matching.py`, `model/model.py` (`predict_flow_matching`), sampler `_fm_values`, `datasets/stream_data.py`, `train/trainer.py` |
-| `xp_05_decoder_partition_of_unity.md` | `partition_of_unity` | `model/partition_of_unity.py`, `model/model.py` (`predict_decoders`), `datasets/tokenizer_masking.py`, `datasets/stream_data.py` |
-| `xp_06_fm_condition_rollout.md` | `flow_matching.prev_rollout` | `model/model.py` (`_fm_rollout_prev`, `predict_flow_matching`), `model/flow_matching.py` (config), `scripts/seam_diagnostic.py` (texture vs lead) |
+| `xp_05_decoder_partition_of_unity.md` | `partition_of_unity`; variant `fmpuro`: `flow_matching.prev_rollout` | `model/partition_of_unity.py`, `model/model.py` (`predict_decoders`; `_fm_rollout_prev`), `datasets/tokenizer_masking.py`, `datasets/stream_data.py` |
 
 **Docs live in `../WeatherGenerator-configs/docs/`:**
 - `seaice/README.md` is the index;
@@ -102,7 +101,7 @@ bash slurm_submissions/submit_ice_era5.sh      # ice + ERA5 base (S1 -> S2)
 bash slurm_submissions/submit_ice_era5_fm.sh   # FM chain on ice_era5_s2
 bash slurm_submissions/submit_ice_era5_pu.sh   # partition of unity (+ FM) chain on ice_era5_s2
 bash slurm_submissions/submit_ice_era5_fmpu.sh # partition of unity on the FM model ice_era5_fm2 (SMOKE=1 first)
-bash slurm_submissions/submit_ice_era5_fmpuro.sh # xp_06: rollout of the FM condition on FM + PU (SMOKE=1 first)
+bash slurm_submissions/submit_ice_era5_fmpuro.sh # xp_05 variant fmpuro: rollout of the FM condition on FM + PU (SMOKE=1 first)
 bash slurm_submissions/submit_ocean_pu.sh      # partition of unity on d5xirkmf, surface decoder (SMOKE=1 first)
 ```
 

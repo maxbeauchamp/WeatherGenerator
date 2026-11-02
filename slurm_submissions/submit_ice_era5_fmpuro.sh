@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rollout of the FM condition (xp_06) on FM + PU: from ice_era5_fmpu1 chkpt 3, x_(k-1) is the
+# Variant fmpuro of xp_05, rollout of the FM condition on FM + PU: from ice_era5_fmpu1 chkpt 3, x_(k-1) is the
 # model's own previous prediction with probability 0.5 (finetune_ice_era5_fmpuro.yml), so that the
 # CICE decoder learns to regenerate the small scales in the rollouts. Same phases as
 # submit_ice_era5_fmpu.sh (ice_era5_pu.sbatch), from a LOGIN node:
