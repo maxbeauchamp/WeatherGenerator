@@ -885,7 +885,12 @@ class Model(torch.nn.Module):
             pred = denoise(x_t, x_prev_c, t_pts)
             if self.training:
                 ro = fm["prev_rollout"]
-                if float(ro["prob"]) > 0.0 and torch.rand(()).item() < float(ro["prob"]):
+                if getattr(self, "_fm_rollout_gen", None) is None:
+                    # same draws on every rank: the decoder is FSDP-sharded, so the extra
+                    # decoder passes of _fm_rollout_prev (all-gathers) must match across ranks
+                    self._fm_rollout_gen = torch.Generator().manual_seed(0)
+                draw = torch.rand((), generator=self._fm_rollout_gen).item()
+                if float(ro["prob"]) > 0.0 and draw < float(ro["prob"]):
                     rollout[stream_name] = self._fm_rollout_prev(
                         denoise, pred, x_prev, n_pts, num_ch, int(ro["num_steps"])
                     )

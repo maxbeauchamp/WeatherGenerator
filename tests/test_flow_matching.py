@@ -230,3 +230,20 @@ def test_prev_rollout_conditions_on_the_own_prediction(monkeypatch, num_steps):
     for step in range(2):
         _predict(model, batch, step, 5, {})
     assert torch.equal(seen[1], truth[1])
+
+
+def test_prev_rollout_draws_match_across_ranks():
+    """FSDP: every rank runs the same extra decoder passes (rank-independent draws)."""
+    batch = _fm_batch([5] * 6)
+    used = []
+    for rank in range(2):
+        torch.manual_seed(rank)  # the global RNG differs between ranks
+        model = _FakeModel(_cfg(prev_rollout={"prob": 0.5, "num_steps": 1}))
+        model.training, state, calls = True, {}, []
+        model._fm_rollout_prev = lambda *a, calls=calls, m=model: (
+            calls.append(1) or Model._fm_rollout_prev(m, *a)
+        )
+        for step in range(6):
+            _predict(model, batch, step, 5, state)
+        used.append(len(calls))
+    assert used[0] == used[1]
