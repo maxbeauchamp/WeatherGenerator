@@ -4,7 +4,8 @@
 #   SMOKE=1 bash slurm_submissions/submit_ice_era5_fmpu.sh [account]   # first: PU + FM, solver in validation
 #   bash slurm_submissions/submit_ice_era5_fmpu.sh [account]           # then the chain
 # Chain: fpu1 -> fpuinfer (7 days, 32 dates) -> fpueval | fpu1 -> fpulong x 2 (90 days, one job per date)
-#        | fpuseams after fpuinfer and fpulong.
+#        | fpuseams after fpuinfer and fpulong (3 h: 4 runs x 2 start dates with maps and GIFs).
+# SEAMS_ONLY=1 resubmits fpuseams alone (LONG_STARTS, SEAMS_7D=0 to skip the 7-day seams).
 # Needs inf_ice_era5_fm (finfer) and inf_ice_era5_fm_long_* for the comparisons.
 # Options as environment variables, e.g. FPU1_EPOCHS=2 bash ... (see ice_era5_pu.sbatch).
 set -euo pipefail
@@ -25,12 +26,18 @@ if [[ -n "${SMOKE:-}" ]]; then
   echo "check: grep -E 'Partition of unity|Flow matching|trainable|loss =|validation \\(' $LOGDIR/ice_era5_fpusmoke_$js.out"
   exit 0
 fi
+if [[ -n "${SEAMS_ONLY:-}" ]]; then  # rerun the seams only, e.g. after a TIMEOUT:
+  # SEAMS_ONLY=1 SEAMS_7D=0 LONG_STARTS=2023-09-01 bash slurm_submissions/submit_ice_era5_fmpuro.sh
+  js=$(sb fpuseams 03:00:00)
+  echo "fpuseams $js"
+  exit 0
+fi
 j1=$(sb fpu1     08:00:00)
 ji=$(sb fpuinfer 06:00:00 afterok:$j1)
 # one job per 90-day start date, in parallel (the PU makes the FM sampling ~3x longer)
 jl1=$(sb fpulong 12:00:00 afterok:$j1 LONG_STARTS=2023-03-01)
 jl2=$(sb fpulong 12:00:00 afterok:$j1 LONG_STARTS=2023-09-01)
 je=$(sb fpueval  01:00:00 afterok:$ji)
-js=$(sb fpuseams 01:00:00 afterany:$ji:$jl1:$jl2)
+js=$(sb fpuseams 03:00:00 afterany:$ji:$jl1:$jl2)
 echo "fpu1 $j1 -> fpuinfer $ji -> fpueval $je | fpulong $jl1 $jl2 | fpuseams $js"
 echo "follow: squeue -u $USER ; grep 'loss =' $LOGDIR/ice_era5_fpu1_$j1.out | tail"

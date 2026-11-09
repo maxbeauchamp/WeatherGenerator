@@ -212,8 +212,11 @@ PY
     ;;
   fpuseams)  # seams: 7 days and every 90-day start date (base, FM, [FM + PU,] FPINF_ID)
     # with texture vs lead time (texture_<ch>.png): small scales kept or lost in the rollouts
-    seams_of "$WD/results/seams_${FPINF_ID#inf_}" "$BINF_ID:base" "$FINF_ID:fm" \
-      $(ref_of "" fm_pu) "$FPINF_ID:$FPU_LABEL"
+    # SEAMS_7D=0: only the 90-day seams (rerun of a start date, e.g. after a TIMEOUT)
+    if [[ "${SEAMS_7D:-1}" != 0 ]]; then
+      seams_of "$WD/results/seams_${FPINF_ID#inf_}" "$BINF_ID:base" "$FINF_ID:fm" \
+        $(ref_of "" fm_pu) "$FPINF_ID:$FPU_LABEL"
+    fi
     for start in "${LONG_STARTS[@]}"; do
       seams_of "$WD/results/seams_${FPINF_ID#inf_}_long_${start//-/}" --animate \
         "$(long_id inf_ice_era5 "$start"):base" "$(long_id "$FINF_ID" "$start"):fm" \
