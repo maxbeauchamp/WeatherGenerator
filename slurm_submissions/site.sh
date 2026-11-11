@@ -23,10 +23,12 @@ case "$SITE" in
     # CICE path of Santis: streams/<name>_santis/ is the Santis copy of streams/<name>/
     CFGS=${CFGS:-$WG/../WeatherGenerator-configs/config}
     EXTRA_OPTS=${EXTRA_OPTS:-streams_directory=$CFGS/streams/${STREAMS:-ice_era5}_santis/}
+    # with fewer GPUs than the node (NGPUS=1), srun cannot bind the task to the CPUs it wants
+    SRUN_OPTS=${SRUN_OPTS:---cpu-bind=none}
     ;;
   *) echo "unknown SITE=$SITE (jupiter | santis)"; exit 1 ;;
 esac
-export SITE ACCOUNT PARTITION WG WD EXTRA_OPTS
+export SITE ACCOUNT PARTITION WG WD EXTRA_OPTS SRUN_OPTS
 # NGPUS=<n>: n tasks / n GPUs per job instead of the 4 of the sbatch headers (e.g. NGPUS=1 when
 # the multi-GPU start fails on a machine). Used by the submit_*.sh scripts.
 GPU_OPTS=()

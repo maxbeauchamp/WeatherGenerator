@@ -39,7 +39,7 @@ export MASTER_PORT=$((29500 + SLURM_JOB_ID % 1000))
 # that GPU is cuda:0 for the task, so LOCAL_RANK must be 0; if all GPUs are visible, use the
 # task's local id. RANK / WORLD_SIZE are given explicitly (WeatherGenerator reads them first).
 run() {
-  srun bash -c '
+  srun ${SRUN_OPTS:-} bash -c '
     if [[ -n "${CUDA_VISIBLE_DEVICES:-}" && "$CUDA_VISIBLE_DEVICES" != *,* ]]; then
       export LOCAL_RANK=0
     else
