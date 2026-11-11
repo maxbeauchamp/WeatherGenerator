@@ -38,6 +38,7 @@ from weathergen.model.engines import (
     TargetPredictionEngineClassic,
 )
 from weathergen.model import flow_matching as fmatch
+from weathergen.model.extra_channels import ExtraChannelEmbed
 from weathergen.model.flow_matching import FlowMatchingConditioner, get_flow_matching_config
 from weathergen.model.forcing_injection import ForcingInjection, get_forcing_reinjection_config
 from weathergen.model.layers import MLP, NamedLinear
@@ -651,7 +652,10 @@ class Model(torch.nn.Module):
     def reset_parameters(self):
         def _reset_params(module):
             reset_types = AdaLayerNorm | nn.Linear | nn.LayerNorm
-            if isinstance(module, reset_types | ForcingInjection | FlowMatchingConditioner):
+            if isinstance(
+                module,
+                reset_types | ForcingInjection | FlowMatchingConditioner | ExtraChannelEmbed,
+            ):
                 module.reset_parameters()
             else:
                 pass

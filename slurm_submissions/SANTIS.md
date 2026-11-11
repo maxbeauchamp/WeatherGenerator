@@ -80,6 +80,23 @@ sq
 
 Do not edit the code or the configs while jobs are queued or running (no code snapshot).
 
+## 2b. xp_06: surface radiation (ssrd, strd) on the base
+
+Once, the Santis copy of the streams with radiation:
+```bash
+CFG=../WeatherGenerator-configs/config
+cp -r $CFG/streams/ice_era5_rad $CFG/streams/ice_era5_rad_santis
+sed -i "s#/e/scratch/weatherai/broccoli1/#/capstor/store/cscs/userlab/ch17/data/#" $CFG/streams/ice_era5_rad_santis/cice.yml
+```
+Then (base `ice_era5_s2` in `$WD/models/`, or `BASE_ID` / `BASE_EPOCH` of a Santis base):
+```bash
+SITE=santis bash slurm_submissions/submit_ice_era5_rad.sh
+```
+Chain: `binfer` → `rcheck` (zero-init = base, comparison printed in its log) | `r1` (new embedder
+only) → `r2` (all, lr 2e-5) → `rinfer` | `eval` (radiation vs base). Logs in
+`$WD/logs/ice_era5_rad/`, run ids `ice_era5_rad1`, `ice_era5_rad2`, `inf_ice_era5_rad`, scores and
+plots in `$WD/results/inf_ice_era5_rad/plots/`. Details: `WeatherGenerator-configs/docs/seaice/xp_06_radiation_forcing.md`.
+
 ## 3. Where everything goes
 
 `WD=/iopsstor/scratch/cscs/course_29fe58c1/shared_work`

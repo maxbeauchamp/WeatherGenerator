@@ -1,5 +1,7 @@
 # Machine-specific defaults for the submit_*.sh scripts. Sourced, not run.
 #   SITE=jupiter (default) | santis
+#   STREAMS=<name>: stream directory of the configs (e.g. ice_era5_rad, xp_06); on Santis its copy
+#   <name>_santis is used (default ice_era5_santis). Empty on JUPITER = the streams of the run json.
 # Every value can still be overridden from the environment (e.g. WD=... SITE=santis bash ...).
 HERE=${HERE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
 SITE=${SITE:-jupiter}
@@ -9,15 +11,17 @@ case "$SITE" in
     PARTITION=${PARTITION:-booster}
     WG=${WG:-/e/project1/weatherai/beauchamp1/WeatherGenerator}
     WD=${WD:-/e/scratch/weatherai/shared_work}
-    EXTRA_OPTS=${EXTRA_OPTS:-}
+    CFGS=${CFGS:-$WG/../WeatherGenerator-configs/config}
+    EXTRA_OPTS=${EXTRA_OPTS:-${STREAMS:+streams_directory=$CFGS/streams/$STREAMS/}}
     ;;
   santis)   # CSCS, Zürich hackathon (see slurm_submissions/SANTIS.md)
     ACCOUNT=${ACCOUNT:-wghack-course2026-cscs}
     PARTITION=${PARTITION:-normal}
     WG=${WG:-$(cd "$HERE/.." && pwd)}
     WD=${WD:-/iopsstor/scratch/cscs/course_29fe58c1/shared_work}
-    # CICE path of Santis: streams/ice_era5_santis/ is the Santis copy of streams/ice_era5/
-    EXTRA_OPTS=${EXTRA_OPTS:-streams_directory=$WG/../WeatherGenerator-configs/config/streams/ice_era5_santis/}
+    # CICE path of Santis: streams/<name>_santis/ is the Santis copy of streams/<name>/
+    CFGS=${CFGS:-$WG/../WeatherGenerator-configs/config}
+    EXTRA_OPTS=${EXTRA_OPTS:-streams_directory=$CFGS/streams/${STREAMS:-ice_era5}_santis/}
     ;;
   *) echo "unknown SITE=$SITE (jupiter | santis)"; exit 1 ;;
 esac

@@ -28,6 +28,11 @@ from weathergen.model.embeddings import (
     StreamEmbedLinear,
     StreamEmbedTransformer,
 )
+from weathergen.model.extra_channels import (
+    ExtraChannelEmbed,
+    extra_channel_columns,
+    source_channel_names,
+)
 from weathergen.model.layers import MLP
 from weathergen.model.utils import ActivationFactory
 from weathergen.utils.utils import get_dtype
@@ -49,17 +54,37 @@ class EmbeddingEngine(torch.nn.Module):
         self.sources_size = sources_size  # KCT:iss130, what is this?
         self.embeds = torch.nn.ModuleDict()
         self.streams = cf.streams
+        # input channels added after pre-training (embed_extra_channels, off by default): the
+        # stream embedder keeps its pre-trained columns, ExtraChannelEmbed adds the new ones
+        self.extra_embeds = torch.nn.ModuleDict()
+        self.extra_cols: dict[str, tuple[list[int], list[int]]] = {}
 
         for i, (stream_name, si) in enumerate(self.streams.items()):
             if si.get("diagnostic", False) or self.sources_size[i] == 0:
                 self.embeds[stream_name] = torch.nn.Identity()
                 continue
 
+            num_columns = self.sources_size[i]
+            extra = list(si.get("embed_extra_channels", None) or [])
+            if extra:
+                if si["embed"]["net"] != "transformer":
+                    raise ValueError("embed_extra_channels needs a transformer stream embedder")
+                cols = extra_channel_columns(source_channel_names(si), num_columns, extra)
+                self.extra_cols[stream_name] = cols
+                num_columns = len(cols[0])
+                self.extra_embeds[stream_name] = ExtraChannelEmbed(
+                    num_extra=len(extra),
+                    token_size=si["token_size"],
+                    num_tokens=si["embed"]["num_tokens"],
+                    dim_out=self.cf.ae_local_dim_embed,
+                    stream_name=stream_name,
+                )
+
             if si["embed"]["net"] == "transformer":
                 self.embeds[stream_name] = StreamEmbedTransformer(
                     num_tokens=si["embed"]["num_tokens"],
                     token_size=si["token_size"],
-                    num_channels=self.sources_size[i],
+                    num_channels=num_columns,
                     dim_embed=si["embed"]["dim_embed"],
                     dim_out=self.cf.ae_local_dim_embed,
                     num_blocks=si["embed"]["num_blocks"],
@@ -104,7 +129,7 @@ class EmbeddingEngine(torch.nn.Module):
                 continue
 
             # embedding from physical space to per patch latent representation
-            x_embeds += [self.embeds[stream_name](sdata).flatten(0, 1)]
+            x_embeds += [self.embed_stream(stream_name, sdata).flatten(0, 1)]
 
         # switch from stream to cell-based ordering and apply per cell positional encoding
 
@@ -130,6 +155,14 @@ class EmbeddingEngine(torch.nn.Module):
         tokens_all = tokens_all + pe_embed[pe_idxs]
 
         return tokens_all
+
+    def embed_stream(self, stream_name, sdata):
+        """Stream embedder, plus the zero-initialised embedding of the extra channels if any."""
+        if stream_name not in self.extra_cols:
+            return self.embeds[stream_name](sdata)
+        base_cols, extra_cols = self.extra_cols[stream_name]
+        x = self.embeds[stream_name](sdata[..., base_cols])
+        return x + self.extra_embeds[stream_name](sdata[..., extra_cols]).to(x.dtype)
 
     def get_pe_idxs_vectorized(self, batch):
         """
