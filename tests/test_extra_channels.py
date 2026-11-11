@@ -138,7 +138,10 @@ def test_model_reset_parameters_keeps_zero_init():
 
 def test_freeze_regex_of_the_phase1_config():
     """Phase 1 trains only the extra-channel embedder (config finetune_ice_era5_rad_phase1.yml)."""
-    freeze = r"^(?!(encoder|encoder\.embed_engine|encoder\.embed_engine\.extra_embeds)$)(?!.*ExtraChannelEmbed_ERA5$).*$"  # noqa: E501
+    freeze = r"^(?!(encoder|encoder\.embed_engine|encoder\.embed_engine\.extra_embeds)$)(?!.*ExtraChannelEmbed_ERA5$)(?!q_cells).*$"  # noqa: E501
+    # 'q_cells' in the string: model_interface then freezes encoder.q_cells (a direct parameter of
+    # the non-frozen parent `encoder`)
+    assert "q_cells" in freeze
     frozen = lambda n: re.fullmatch(freeze, n) is not None  # noqa: E731
     assert not frozen("ExtraChannelEmbed_ERA5")
     for parent in ["encoder", "encoder.embed_engine", "encoder.embed_engine.extra_embeds"]:
