@@ -107,7 +107,10 @@ def test_engine_is_exactly_the_pretrained_embedder_at_start():
     x_new = torch.randn(9, TOKEN_SIZE, META + len(NEW))
     base_cols, _ = new.extra_cols["ERA5"]
     x_old = x_new[..., base_cols]
-    with torch.no_grad():
+    # the stream embedder casts q, k, v to bf16 and relies on autocast, as in training
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    old, new, x_new, x_old = old.to(device), new.to(device), x_new.to(device), x_old.to(device)
+    with torch.no_grad(), torch.autocast(device, dtype=torch.bfloat16):
         assert torch.equal(new.embed_stream("ERA5", x_new), old.embed_stream("ERA5", x_old))
         # once trained, the new channels change the tokens
         new.extra_embeds["ERA5"].w2.normal_()
