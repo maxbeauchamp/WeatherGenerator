@@ -1,5 +1,5 @@
 #!/bin/bash -x
-# Ice + ERA5 from scratch on JUPITER: one node, 4 GH200 GPUs (DDP, one task per GPU).
+# Ice + ERA5 from scratch on JUPITER (or Santis: SITE=santis, see site.sh): one node, 4 GH200 GPUs (DDP, one task per GPU).
 # JUPITER limits: partition booster, max 12 h per job -> the ~24 h experiment is 2 chained jobs:
 #   S1 (from scratch, 2-day rollouts)  then  S2 (7-day rollouts, from the final S1 model).
 # Submit both from a LOGIN node:
@@ -22,6 +22,9 @@ S1_ID=${S1_ID:-ice_era5_s1}
 S2_ID=${S2_ID:-ice_era5_s2}
 S1_EPOCHS=${S1_EPOCHS:-16}     # 16 x 4096 samples: fits in 12 h on 4 GPUs with margin
 S2_EPOCHS=${S2_EPOCHS:-8}
+
+# extra --options of every train / inference step (SITE=santis: streams_directory, see site.sh)
+read -r -a XO <<< "${EXTRA_OPTS:-}"
 
 cd "$WG"
 export SRUN_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK}   # srun does not inherit --cpus-per-task
@@ -53,13 +56,13 @@ case "$PHASE" in
   s1)
     run uv run --offline train --run-id "$S1_ID" \
       --config "$CFG/train_ice_era5_scratch.yml" \
-      --options training_config.num_mini_epochs="$S1_EPOCHS"
+      --options training_config.num_mini_epochs="$S1_EPOCHS" ${XO[@]+"${XO[@]}"}
     ;;
   s2)
     # final S1 model = chkpt000<S1_EPOCHS>
     run uv run --offline train_continue --from-run-id "$S1_ID" --mini-epoch "$S1_EPOCHS" \
       --run-id "$S2_ID" --config "$CFG/train_ice_era5_long.yml" \
-      --options training_config.num_mini_epochs="$S2_EPOCHS"
+      --options training_config.num_mini_epochs="$S2_EPOCHS" ${XO[@]+"${XO[@]}"}
     ;;
   *) echo "unknown PHASE=$PHASE (s1 | s2)"; exit 1 ;;
 esac

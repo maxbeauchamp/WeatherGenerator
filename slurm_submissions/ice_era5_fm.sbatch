@@ -1,5 +1,5 @@
 #!/bin/bash -x
-# Flow matching on the ice + ERA5 base model, WITHOUT the team launcher (no snapshot, no MLflow).
+# Flow matching on the ice + ERA5 base model (JUPITER, or Santis with SITE=santis, see site.sh), WITHOUT the team launcher (no snapshot, no MLflow).
 # One node, 4 GH200 GPUs (one task per GPU). Phases chained by submit_ice_era5_fm.sh:
 #   binfer (base inference) | fm1 -> fm2 -> finfer (FM inference) | eval (after binfer + finfer)
 # Submit from a LOGIN node:  bash slurm_submissions/submit_ice_era5_fm.sh
@@ -18,13 +18,16 @@ set -euo pipefail
 PHASE=${PHASE:?PHASE = binfer | fm1 | fm2 | finfer | eval}
 WG=${WG:-/e/project1/weatherai/beauchamp1/WeatherGenerator}
 CFG=../WeatherGenerator-configs/config
-WD=/e/scratch/weatherai/shared_work
+WD=${WD:-/e/scratch/weatherai/shared_work}
 BASE_ID=${BASE_ID:-ice_era5_s2};  BASE_EPOCH=${BASE_EPOCH:-6}
 FM1_ID=${FM1_ID:-ice_era5_fm1};  FM1_EPOCHS=${FM1_EPOCHS:-7}
 FM2_ID=${FM2_ID:-ice_era5_fm2};  FM2_EPOCHS=${FM2_EPOCHS:-6}
 BINF_ID=${BINF_ID:-inf_ice_era5_base}; FINF_ID=${FINF_ID:-inf_ice_era5_fm}
 # both inferences on the SAME 32 start dates of 2023 (no shuffling)
 SAME_DATES=(test_config.shuffle=False test_config.samples_per_mini_epoch=32 test_config.output.num_samples=32)
+
+# extra --options of every train / inference step (SITE=santis: streams_directory, see site.sh)
+read -r -a XO <<< "${EXTRA_OPTS:-}"
 
 cd "$WG"
 export SRUN_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK}
@@ -45,20 +48,20 @@ case "$PHASE" in
   binfer)
     rm -rf "$WD/results/$BINF_ID"
     run uv run --offline inference --from-run-id "$BASE_ID" --mini-epoch "$BASE_EPOCH" --run-id "$BINF_ID" \
-      --config "$CFG/inference_ice_era5.yml" --options "${SAME_DATES[@]}"
+      --config "$CFG/inference_ice_era5.yml" --options "${SAME_DATES[@]}" ${XO[@]+"${XO[@]}"}
     ;;
   fm1)   # CICE decoder + flow-matching conditioning only (ERA5 re-injection kept, as in the base)
     run uv run --offline train_continue --from-run-id "$BASE_ID" --mini-epoch "$BASE_EPOCH" --run-id "$FM1_ID" \
-      --config "$CFG/finetune_cice_fm_phase1.yml" --options training_config.num_mini_epochs="$FM1_EPOCHS"
+      --config "$CFG/finetune_cice_fm_phase1.yml" --options training_config.num_mini_epochs="$FM1_EPOCHS" ${XO[@]+"${XO[@]}"}
     ;;
   fm2)   # everything trainable, lr 1e-5, from the final FM1 model
     run uv run --offline train_continue --from-run-id "$FM1_ID" --mini-epoch "$FM1_EPOCHS" --run-id "$FM2_ID" \
-      --config "$CFG/finetune_cice_fm_phase2.yml" --options training_config.num_mini_epochs="$FM2_EPOCHS"
+      --config "$CFG/finetune_cice_fm_phase2.yml" --options training_config.num_mini_epochs="$FM2_EPOCHS" ${XO[@]+"${XO[@]}"}
     ;;
   finfer)  # 8 members x 16 Heun steps, same dates as binfer
     rm -rf "$WD/results/$FINF_ID"
     run uv run --offline inference --from-run-id "$FM2_ID" --mini-epoch "$FM2_EPOCHS" --run-id "$FINF_ID" \
-      --config "$CFG/inference_cice_fm.yml" --options "${SAME_DATES[@]}"
+      --config "$CFG/inference_cice_fm.yml" --options "${SAME_DATES[@]}" ${XO[@]+"${XO[@]}"}
     ;;
   eval)  # FastEval (single process): FM ensemble vs deterministic base, with persistence
     mkdir -p config/evaluate

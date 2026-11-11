@@ -97,7 +97,7 @@ CF=../WeatherGenerator-configs/config; WD=/e/scratch/weatherai/shared_work
 uv run --offline train_continue --from-run-id <run> --mini-epoch <N> --run-id <new> --config <cfg>
 uv run --offline inference --from-run-id <run> --mini-epoch <N> --run-id inf_<x> --config <cfg>
 ./run_cice_pipeline.sh <step>            # check | ie-smoke | reinj-check | fm-check | pu-check | ...
-bash slurm_submissions/submit_ice_era5.sh      # ice + ERA5 base (S1 -> S2)
+bash slurm_submissions/submit_ice_era5.sh      # ice + ERA5 base (S1 -> S2); SITE=santis [FM=1]: Santis, see slurm_submissions/SANTIS.md
 bash slurm_submissions/submit_ice_era5_fm.sh   # FM chain on ice_era5_s2
 bash slurm_submissions/submit_ice_era5_pu.sh   # partition of unity (+ FM) chain on ice_era5_s2
 bash slurm_submissions/submit_ice_era5_fmpu.sh # partition of unity on the FM model ice_era5_fm2 (SMOKE=1 first)
