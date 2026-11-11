@@ -77,6 +77,9 @@ sq
 - **Start the FM from the JUPITER base** without retraining: copy `models/ice_era5_s2/` into
   `$WD/models/`, then `SITE=santis bash slurm_submissions/submit_ice_era5_fm.sh`.
 - `ACCOUNT`, `PARTITION`, `WD`, `LOGDIR`, `EXTRA_OPTS` override the defaults of `site.sh`.
+- **GPUs per job:** `NGPUS=1` runs each job on 1 GPU / 1 task instead of 4. On Santis the
+  4-task start failed with `NCCL error ... invalid usage` at `init_process_group` (2026-11-11):
+  use `NGPUS=1` until the multi-GPU binding is sorted out (fewer samples per hour).
 
 Do not edit the code or the configs while jobs are queued or running (no code snapshot).
 

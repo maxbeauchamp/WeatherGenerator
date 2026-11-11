@@ -2,6 +2,7 @@
 #   SITE=jupiter (default) | santis
 #   STREAMS=<name>: stream directory of the configs (e.g. ice_era5_rad, xp_06); on Santis its copy
 #   <name>_santis is used (default ice_era5_santis). Empty on JUPITER = the streams of the run json.
+#   NGPUS=<n>: GPUs (= tasks) per job, default the 4 of the sbatch headers.
 # Every value can still be overridden from the environment (e.g. WD=... SITE=santis bash ...).
 HERE=${HERE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
 SITE=${SITE:-jupiter}
@@ -26,3 +27,7 @@ case "$SITE" in
   *) echo "unknown SITE=$SITE (jupiter | santis)"; exit 1 ;;
 esac
 export SITE ACCOUNT PARTITION WG WD EXTRA_OPTS
+# NGPUS=<n>: n tasks / n GPUs per job instead of the 4 of the sbatch headers (e.g. NGPUS=1 when
+# the multi-GPU start fails on a machine). Used by the submit_*.sh scripts.
+GPU_OPTS=()
+if [[ -n "${NGPUS:-}" ]]; then GPU_OPTS=(--ntasks-per-node="$NGPUS" --gres=gpu:"$NGPUS"); fi

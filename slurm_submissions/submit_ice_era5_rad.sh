@@ -25,7 +25,7 @@ mkdir -p "$LOGDIR"
 sb() {  # sb <phase> <time> [dependency]
   local dep=(); [[ -n "${3:-}" ]] && dep=(--dependency="$3")
   sbatch --parsable -A "$ACCOUNT" -p "$PARTITION" -J "ice_era5_$1" -t "$2" \
-    -o "$LOGDIR/%x_%j.out" -e "$LOGDIR/%x_%j.err" \
+    ${GPU_OPTS[@]+"${GPU_OPTS[@]}"} -o "$LOGDIR/%x_%j.out" -e "$LOGDIR/%x_%j.err" \
     "${dep[@]}" --export=ALL,PHASE="$1" "$HERE/ice_era5_rad.sbatch"
 }
 after=${AFTER:+afterok:$AFTER}

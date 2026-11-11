@@ -14,7 +14,8 @@ S1_EPOCHS=${S1_EPOCHS:-16};  S2_EPOCHS=${S2_EPOCHS:-8}
 export S1_ID S2_ID S1_EPOCHS S2_EPOCHS
 LOGDIR=${LOGDIR:-$WD/logs/ice_era5}
 mkdir -p "$LOGDIR"
-common=(--parsable -A "$ACCOUNT" -p "$PARTITION" -o "$LOGDIR/%x_%j.out" -e "$LOGDIR/%x_%j.err")
+common=(--parsable -A "$ACCOUNT" -p "$PARTITION" ${GPU_OPTS[@]+"${GPU_OPTS[@]}"}
+  -o "$LOGDIR/%x_%j.out" -e "$LOGDIR/%x_%j.err")
 j1=$(sbatch "${common[@]}" -J ice_era5_s1 --export=ALL,PHASE=s1 "$HERE/ice_era5.sbatch")
 j2=$(sbatch "${common[@]}" -J ice_era5_s2 --dependency=afterok:"$j1" --export=ALL,PHASE=s2 \
   "$HERE/ice_era5.sbatch")
