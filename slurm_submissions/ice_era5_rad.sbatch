@@ -36,6 +36,11 @@ export SRUN_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK}
 if [[ "$SLURM_JOB_NUM_NODES" == "1" ]]; then export MASTER_ADDR=127.0.0.1
 else export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1); fi
 export MASTER_PORT=$((29500 + SLURM_JOB_ID % 1000))
+plots() {  # plots <inference run id>: maps days 1/4/7, extent series, GIF animations (scripts/plot_seaice.py)
+  uv run --offline python scripts/plot_seaice.py "$WD"/results/"$1"/validation_chkpt*_rank*.zip \
+    --samples 0 1 --vars aice hi --days 1 4 7 --animate --anim-format gif --timeseries \
+    --label "$1" --out-dir "$WD/results/$1/figs_seaice" || echo ">> plots failed (inference outputs kept)"
+}
 run() {  # one task per GPU (Slurm binds one GPU per task -> it is cuda:0 for the task)
   srun ${SRUN_OPTS:-} bash -c '
     if [[ -n "${CUDA_VISIBLE_DEVICES:-}" && "$CUDA_VISIBLE_DEVICES" != *,* ]]; then export LOCAL_RANK=0
@@ -51,6 +56,7 @@ case "$PHASE" in
     rm -rf "$WD/results/$BINF_ID"
     run uv run --offline inference --from-run-id "$BASE_ID" --mini-epoch "$BASE_EPOCH" --run-id "$BINF_ID" \
       --config "$CFG/inference_ice_era5.yml" --options "${SAME_DATES[@]}" ${BXO[@]+"${BXO[@]}"}
+    plots "$BINF_ID"
     ;;
   rcheck)  # base checkpoint + streams with ssrd / strd: the new embedder is 0 -> same forecasts
     rm -rf "$WD/results/$CHECK_ID"
@@ -74,6 +80,7 @@ case "$PHASE" in
     rm -rf "$WD/results/$RINF_ID"
     run uv run --offline inference --from-run-id "$R2_ID" --mini-epoch "$R2_EPOCHS" --run-id "$RINF_ID" \
       --config "$CFG/inference_ice_era5.yml" --options "${SAME_DATES[@]}" ${XO[@]+"${XO[@]}"}
+    plots "$RINF_ID"
     ;;
   eval)  # FastEval (single process): with radiation vs base, with persistence
     mkdir -p config/evaluate
