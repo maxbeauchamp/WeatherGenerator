@@ -43,6 +43,9 @@ plots() {  # plots <inference run id>: maps days 1/4/7, extent series, GIF anima
 }
 run() {  # one task per GPU (Slurm binds one GPU per task -> it is cuda:0 for the task)
   srun ${SRUN_OPTS:-} bash -c '
+    # Santis (GPU_FROM_LOCALID=1): no per-task GPU isolation, every task sees CUDA_VISIBLE_DEVICES=0
+    # -> give each task its own GPU (CSCS recipe), it is then cuda:0 for the task
+    if [[ "${GPU_FROM_LOCALID:-0}" == 1 ]]; then export CUDA_VISIBLE_DEVICES=$SLURM_LOCALID; fi
     if [[ -n "${CUDA_VISIBLE_DEVICES:-}" && "$CUDA_VISIBLE_DEVICES" != *,* ]]; then export LOCAL_RANK=0
     else export LOCAL_RANK=$SLURM_LOCALID; fi
     export RANK=$SLURM_PROCID WORLD_SIZE=$SLURM_NTASKS
@@ -86,12 +89,12 @@ case "$PHASE" in
     mkdir -p config/evaluate
     EV="config/evaluate/eval_${RINF_ID}_vs_base.yml"
     uv run --offline python - "$CFG/evaluate/eval_ice_era5.yml" "$EV" "$WD" "$RINF_ID" "$BINF_ID" <<'PY'
-import sys, yaml
+import os, sys, yaml
 tpl, out, wd, rad, base = sys.argv[1:]
 txt = open(tpl).read()
 def cfg(rid): return yaml.safe_load(txt.replace("__RUN__", rid).replace("__WD__", wd))
 c = cfg(rad)
-c["run_ids"][rad]["label"] = "ice + ERA5 + ssrd/strd"
+c["run_ids"][rad]["label"] = os.environ.get("RAD_LABEL", "ice + ERA5 + ssrd/strd")
 c["run_ids"][base] = cfg(base)["run_ids"][base]
 c["run_ids"][base]["label"] = "ice + ERA5, base"
 yaml.safe_dump(c, open(out, "w"), sort_keys=False)

@@ -36,6 +36,9 @@ else export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -
 export MASTER_PORT=$((29500 + SLURM_JOB_ID % 1000))
 run() {  # one task per GPU (Slurm binds one GPU per task -> it is cuda:0 for the task)
   srun ${SRUN_OPTS:-} bash -c '
+    # Santis (GPU_FROM_LOCALID=1): no per-task GPU isolation, every task sees CUDA_VISIBLE_DEVICES=0
+    # -> give each task its own GPU (CSCS recipe), it is then cuda:0 for the task
+    if [[ "${GPU_FROM_LOCALID:-0}" == 1 ]]; then export CUDA_VISIBLE_DEVICES=$SLURM_LOCALID; fi
     if [[ -n "${CUDA_VISIBLE_DEVICES:-}" && "$CUDA_VISIBLE_DEVICES" != *,* ]]; then export LOCAL_RANK=0
     else export LOCAL_RANK=$SLURM_LOCALID; fi
     export RANK=$SLURM_PROCID WORLD_SIZE=$SLURM_NTASKS

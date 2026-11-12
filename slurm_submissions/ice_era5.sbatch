@@ -40,6 +40,9 @@ export MASTER_PORT=$((29500 + SLURM_JOB_ID % 1000))
 # task's local id. RANK / WORLD_SIZE are given explicitly (WeatherGenerator reads them first).
 run() {
   srun ${SRUN_OPTS:-} bash -c '
+    # Santis (GPU_FROM_LOCALID=1): no per-task GPU isolation, every task sees CUDA_VISIBLE_DEVICES=0
+    # -> give each task its own GPU (CSCS recipe), it is then cuda:0 for the task
+    if [[ "${GPU_FROM_LOCALID:-0}" == 1 ]]; then export CUDA_VISIBLE_DEVICES=$SLURM_LOCALID; fi
     if [[ -n "${CUDA_VISIBLE_DEVICES:-}" && "$CUDA_VISIBLE_DEVICES" != *,* ]]; then
       export LOCAL_RANK=0
     else

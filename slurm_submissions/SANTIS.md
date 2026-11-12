@@ -77,9 +77,10 @@ sq
 - **Start the FM from the JUPITER base** without retraining: copy `models/ice_era5_s2/` into
   `$WD/models/`, then `SITE=santis bash slurm_submissions/submit_ice_era5_fm.sh`.
 - `ACCOUNT`, `PARTITION`, `WD`, `LOGDIR`, `EXTRA_OPTS` override the defaults of `site.sh`.
-- **GPUs per job:** `NGPUS=1` runs each job on 1 GPU / 1 task instead of 4. On Santis the
-  4-task start failed with `NCCL error ... invalid usage` at `init_process_group` (2026-11-11):
-  use `NGPUS=1` until the multi-GPU binding is sorted out (fewer samples per hour).
+- **GPUs per job:** `NGPUS=1` runs each job on 1 GPU / 1 task instead of 4. The 4-task start
+  failed on Santis (2026-11-11, NCCL `invalid usage`): every task saw `CUDA_VISIBLE_DEVICES=0`.
+  Fixed in `site.sh` (`GPU_FROM_LOCALID=1`: task i gets GPU i); check it with a smoke job
+  (`SMOKE=1 SITE=santis bash slurm_submissions/submit_ice_era5_rad8.sh`) before long 4-GPU runs.
 
 Do not edit the code or the configs while jobs are queued or running (no code snapshot).
 
@@ -99,6 +100,17 @@ Chain: `binfer` → `rcheck` (zero-init = base, comparison printed in its log) |
 only) → `r2` (all, lr 2e-5) → `rinfer` | `eval` (radiation vs base). Logs in
 `$WD/logs/ice_era5_rad/`, run ids `ice_era5_rad1`, `ice_era5_rad2`, `inf_ice_era5_rad`, scores and
 plots in `$WD/results/inf_ice_era5_rad/plots/`. Details: `WeatherGenerator-configs/docs/seaice/xp_06_radiation_forcing.md`.
+
+## 2c. xp_07: radiation from scratch (4 GPUs)
+
+```bash
+CFG=../WeatherGenerator-configs/config
+cp -r $CFG/streams/ice_era5_rad8 $CFG/streams/ice_era5_rad8_santis
+sed -i "s#/e/scratch/weatherai/broccoli1/#/capstor/store/cscs/userlab/ch17/data/#" $CFG/streams/ice_era5_rad8_santis/cice.yml
+SMOKE=1 SITE=santis bash slurm_submissions/submit_ice_era5_rad8.sh   # ~15 min, 4 GPUs
+SITE=santis bash slurm_submissions/submit_ice_era5_rad8.sh           # S1 -> S2 -> rinfer -> eval
+```
+Logs in `$WD/logs/ice_era5_rad8/`; details in `xp_07_radiation_from_scratch.md`.
 
 ## 3. Where everything goes
 
